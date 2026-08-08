@@ -1,5 +1,5 @@
 export const STORAGE_KEYS = {
-  config: "ascii-ocean-mobile-config-v3",
+  config: "ascii-ocean-mobile-config-v4",
   panel: "ascii-ocean-mobile-debug-panel-open"
 };
 
@@ -9,7 +9,6 @@ export const DEFAULT_CONFIG = Object.freeze({
   coralHeight: 30,
   algaeHeight: 60,
   animationIntensity: 150,
-  pullRefreshDistanceCells: 25,
   bucketScale: 1,
   // Cada segmento individual das três barras do balde leva este tempo.
   // Mantido fora do menu de debug por enquanto, mas centralizado aqui para
@@ -57,15 +56,6 @@ export const CONTROL_DEFINITIONS = Object.freeze({
     step: 5,
     suffix: "%",
     structural: false
-  },
-  pullRefreshDistanceCells: {
-    label: "Distância para atualizar",
-    min: 4,
-    max: 30,
-    step: 0.5,
-    suffix: " cel",
-    structural: false,
-    affectsOcean: false
   },
   bucketScale: {
     label: "Tamanho do balde",

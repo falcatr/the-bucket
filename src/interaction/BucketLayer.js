@@ -9,6 +9,13 @@ const ACTIVE_FILL_STAGES = ["░", "▒", "▓", "█"];
 
 const SWIPE_POSE_DURATION_MS = 520;
 const BUCKET_CENTER_Y = 0.39;
+
+// `IDLE_LOADING_ART[1]` is the upper rim:
+// "  ,--[___]--,"
+// Refresh only becomes valid after this complete row is visually above
+// the animated waterline. This is resolution-independent.
+const REFRESH_BUCKET_REFERENCE_ROW = 1;
+const REFRESH_CLEARANCE_CELLS = 0.08;
 const RETURN_DURATION_MS = 390;
 // Maximum visual travel is intentionally independent from the refresh
 // threshold. Users can keep pulling after the gesture is already armed.
@@ -141,9 +148,71 @@ export class BucketLayer {
     );
   }
 
-  get pullThresholdPx() {
-    const cells = Math.max(0.5, Number(this.ocean.config.pullRefreshDistanceCells) || 5.5);
-    return this.ocean.cellH * cells;
+  getSurfaceScreenY(
+    visualOceanOffset =
+      this.oceanOffsetY
+  ) {
+    const boundaryWorldRow =
+      this.ocean
+        .getSurfaceBoundaryWorldRow();
+
+    const canvasTop =
+      -this.ocean.upperRevealHeight +
+      visualOceanOffset;
+
+    // drawCellGlyph uses the center of the logical row.
+    return (
+      canvasTop +
+      (
+        boundaryWorldRow +
+        0.5
+      ) *
+      this.ocean.cellH
+    );
+  }
+
+  getBucketRefreshReferenceY() {
+    const {
+      originY
+    } = this.getArtLayout(
+      IDLE_LOADING_ART
+    );
+
+    // `,--[___]--,` is row 1. We compare against its BOTTOM edge so the
+    // entire rim row must already be outside the underwater region.
+    const referenceRowTop =
+      (
+        originY +
+        REFRESH_BUCKET_REFERENCE_ROW *
+        this.bucketScale
+      ) *
+      this.ocean.cellH;
+
+    return (
+      referenceRowTop +
+      this.ocean.cellH *
+        this.bucketScale +
+      this.ocean.cellH *
+        REFRESH_CLEARANCE_CELLS
+    );
+  }
+
+  isRefreshGeometrySatisfied(
+    visualOceanOffset
+  ) {
+    if (
+      !this.ocean.cellH ||
+      !this.ocean.upperRevealHeight
+    ) {
+      return false;
+    }
+
+    return (
+      this.getSurfaceScreenY(
+        visualOceanOffset
+      ) >=
+      this.getBucketRefreshReferenceY()
+    );
   }
 
   resetLoading() {
@@ -197,12 +266,13 @@ export class BucketLayer {
         downwardDistance
       );
 
-    // Threshold is measured using the actual on-screen movement of the
-    // ocean. The debug value in cells therefore matches what the user sees.
+    // Resolution-independent refresh rule: arm only when the real
+    // waterline has moved below the complete `,--[___]--,` rim.
     this.pointer.armed =
       isMostlyVertical &&
-      visualDistance >=
-        this.pullThresholdPx;
+      this.isRefreshGeometrySatisfied(
+        visualDistance
+      );
 
     // Pull-to-refresh: o gesto apenas desloca o MESMO canvas alto do oceano.
     // A região de reflexos já existe e está animando acima da viewport; ao
@@ -235,8 +305,9 @@ export class BucketLayer {
 
     const shouldRefresh =
       isVerticalEnough &&
-      visualDistance >=
-        this.pullThresholdPx;
+      this.isRefreshGeometrySatisfied(
+        visualDistance
+      );
 
     // A pose do balde só pode mudar depois que o usuário SOLTA o input.
     // Ultrapassar o threshold durante o drag apenas arma a atualização.
@@ -284,8 +355,8 @@ export class BucketLayer {
         0.94
     );
 
-    // Threshold and drag feel are now independent. Changing "Distância
-    // para atualizar" only changes when release becomes valid.
+    // Drag feel is independent from refresh validity. Refresh is
+    // determined by the live bucket ↔ waterline geometry.
     const resistanceDistance =
       viewportHeight * 0.20;
 

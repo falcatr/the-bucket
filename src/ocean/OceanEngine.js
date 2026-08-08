@@ -179,6 +179,13 @@ export class OceanEngine {
     this.regenerate(false, false);
   }
 
+  getSurfaceBoundaryWorldRow() {
+    return (
+      this.upperRows -
+      SURFACE_HIDDEN_MARGIN_CELLS
+    );
+  }
+
   resetRng() {
     this.rng = createRng(this.seed);
     this.random = randomHelpers(this.rng);
@@ -199,8 +206,7 @@ export class OceanEngine {
     );
 
     const surfaceBoundaryRow =
-      this.upperRows -
-      SURFACE_HIDDEN_MARGIN_CELLS;
+      this.getSurfaceBoundaryWorldRow();
 
     // Toda a extensão superior agora pertence à água/reflexos.
     // Mantemos apenas uma pequena margem no topo para os caracteres
@@ -1356,8 +1362,7 @@ export class OceanEngine {
     const ctx = this.ctx;
 
     const surfaceBoundaryRow =
-      this.upperRows -
-      SURFACE_HIDDEN_MARGIN_CELLS;
+      this.getSurfaceBoundaryWorldRow();
 
     const phaseTime =
       time *

@@ -1,78 +1,110 @@
-# ASCII Ocean Mobile v0.2.10
+# ASCII Ocean Mobile v0.2.11
 
-Simplificação da extensão superior do oceano.
+Refatoração do critério de pull-to-refresh para funcionar de forma
+consistente entre diferentes resoluções e aspect ratios.
 
-## Removido
+## Removido: Distância para atualizar
 
-Foram retirados completamente:
+O slider por células foi removido.
 
-- a faixa de cidade/topo;
-- os blocos de skyline;
-- luzes da cidade;
-- o divisor `========T========`.
+Mesmo quando a distância era calculada visualmente, um número fixo
+ainda precisava ser recalibrado entre desktop, Device Mode e aparelhos
+físicos.
 
-A área superior volta a ser dedicada somente à leitura da água.
+## Nova condição
 
-## Área revelada no pull
+O refresh agora depende da geometria da cena.
 
-Num pull profundo:
-
-```text
-    ==     _
-  ____  ==
-     ===
- ·      __
-   ~~~
-==      ___
-
-~~~~ superfície ~~~~
-oceano
-```
-
-Os reflexos ocupam agora praticamente toda a extensão escondida do
-mesmo canvas.
-
-Como o espaço antes reservado à cidade ficou livre, a quantidade de
-grupos de reflexo foi aumentada levemente para que a parte superior
-continue interessante mesmo em um pull de aproximadamente 50%.
-
-## Separador que permanece
-
-O único divisor visual é a superfície orgânica do próprio oceano:
+A referência no balde é:
 
 ```text
-~ = _ ~ ~ = _
+  ,--[___]--,
 ```
 
-Ela continua:
+Essa é a linha `IDLE_LOADING_ART[1]`.
 
-- escondida em repouso;
-- entrando na viewport durante o pull;
-- servindo como referência visual para o balde sair da água;
-- animada pelo mesmo `Intensidade de animação`.
-
-## Threshold
-
-Sem alterações nesta release:
+O gesto só fica armado quando a superfície animada da água passa
+totalmente para baixo dessa linha.
 
 ```text
-Distância para atualizar
-4 → 30 cel
+NÃO ARMADO
 
-default: 25 cel
+~~~~~ superfície ~~~~~
+      ___
+  ,--[___]--,
+ /            \
+
+
+ARMADO
+
+      ___
+  ,--[___]--,  ← borda superior inteira fora da água
+
+~~~~~ superfície ~~~~~
+ /            \
 ```
 
-O threshold continua sendo calculado pela distância VISUAL do canvas.
+A troca para `IDLE-SWIPE` continua acontecendo somente no release.
 
-## Defaults
+## Como é calculado
 
-- Distância vertical: `1 cel`
-- Distância horizontal: `1 cel`
-- Altura máxima dos corais: `30%`
-- Altura máxima das algas: `60%`
-- Intensidade de animação: `150%`
-- Distância para atualizar: `25 cel`
-- Tamanho do balde: `1x`
+Em cada movimento são comparados em coordenadas reais da tela:
+
+- Y atual da linha de superfície;
+- Y da borda inferior da linha `,--[___]--,`.
+
+O cálculo já leva em conta:
+
+- resolução;
+- aspect ratio;
+- largura lógica da grade;
+- `cellH` real;
+- `bucketScale`;
+- posição vertical do balde;
+- tamanho da arte;
+- extensão superior escondida;
+- deslocamento atual do canvas.
+
+Portanto mudar o balde de `1x` para outro tamanho também recalibra
+automaticamente o ponto de refresh.
+
+## Margem de segurança
+
+Existe apenas uma pequena margem interna:
+
+```js
+REFRESH_CLEARANCE_CELLS = 0.08;
+```
+
+Ela evita considerar refresh exatamente no pixel em que a superfície
+e a borda do balde se tocam.
+
+Isso não é um threshold por device; é apenas uma tolerância geométrica.
+
+## Debug atual
+
+Permanecem:
+
+- Distância vertical do coral
+- Distância horizontal do coral
+- Altura máxima dos corais
+- Altura máxima das algas
+- Intensidade de animação
+- Tamanho do balde
+
+`Distância para atualizar` não existe mais.
+
+## Demais comportamentos
+
+Mantidos:
+
+- pull visual de até aproximadamente 50% da viewport;
+- reflexos em cascata acima da superfície;
+- superfície fora da tela em repouso;
+- balde fixo durante o pull;
+- refresh apenas no release;
+- balde `1x` como default;
+- intensidade `150%` como default.
 
 ## Rodando
 
