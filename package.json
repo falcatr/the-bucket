@@ -1,0 +1,11 @@
+{
+  "name": "ascii-ocean-mobile",
+  "private": true,
+  "version": "0.2.4",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "node server.mjs --root dist"
+  }
+}
