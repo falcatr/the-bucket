@@ -1,7 +1,7 @@
 {
   "name": "ascii-ocean-mobile",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.2.10",
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",

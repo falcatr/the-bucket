@@ -23,6 +23,12 @@ const TARGET_COLUMNS = 42;
 const CELL_HEIGHT_RATIO = 1.28;
 const STEP_MS = 78;
 const MAX_STATIC_GLYPHS = 7800;
+// The same canvas extends well above the visible viewport so a long
+// pull can expose roughly half a screen of animated upper water.
+const UPPER_REVEAL_VIEWPORT_RATIO = 0.58;
+const SURFACE_HIDDEN_MARGIN_CELLS = 1.5;
+const SURFACE_BASE_PHASE_PER_MS = 0.00065;
+const REFLECTION_GLYPHS = ["=", "_", "~", ":", "·", "."];
 
 export class OceanEngine {
   constructor(canvas, config) {
@@ -33,6 +39,10 @@ export class OceanEngine {
     this.dpr = 1;
     this.width = 0;
     this.height = 0;
+    this.viewportHeight = 0;
+    this.upperRevealHeight = 0;
+    this.upperRows = 0;
+    this.worldRows = 0;
     this.cellW = 0;
     this.cellH = 0;
     this.cols = TARGET_COLUMNS;
@@ -56,6 +66,9 @@ export class OceanEngine {
     this.maxAlgaeHeight = 0;
     this.algaeTopRow = 0;
 
+    this.reflectionCascades = [];
+    this.surfacePhase = 0;
+
     this.staticLayer = document.createElement("canvas");
     this.staticCtx = this.staticLayer.getContext("2d");
 
@@ -75,7 +88,7 @@ export class OceanEngine {
       this.regenerate(false, false);
     });
 
-    this.resizeObserver.observe(this.canvas);
+    this.resizeObserver.observe(this.canvas.parentElement);
     this.frameHandle = requestAnimationFrame(this.loop.bind(this));
   }
 
@@ -85,11 +98,41 @@ export class OceanEngine {
   }
 
   resize() {
-    const rect = this.canvas.getBoundingClientRect();
+    const container = this.canvas.parentElement;
+    const rect = container.getBoundingClientRect();
 
     this.width = Math.max(1, rect.width);
-    this.height = Math.max(1, rect.height);
+    this.viewportHeight = Math.max(1, rect.height);
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    this.cellW = this.width / TARGET_COLUMNS;
+    this.cellH = this.cellW * CELL_HEIGHT_RATIO;
+    this.cols = TARGET_COLUMNS;
+
+    // `rows` remains the logical underwater/visible viewport size so all
+    // existing procedural generation and the bucket keep their proportions.
+    this.rows = Math.ceil(this.viewportHeight / this.cellH) + 1;
+
+    // The same canvas is extended upward. Using a whole number of cells
+    // keeps the surface boundary perfectly aligned with the console grid.
+    const desiredRevealHeight =
+      this.viewportHeight * UPPER_REVEAL_VIEWPORT_RATIO;
+
+    this.upperRows = Math.max(
+      8,
+      Math.ceil(desiredRevealHeight / this.cellH)
+    );
+
+    this.upperRevealHeight = this.upperRows * this.cellH;
+    this.worldRows = this.upperRows + this.rows;
+    this.height = this.upperRevealHeight + this.viewportHeight;
+
+    // The canvas physically exists above the viewport. At rest the first
+    // underwater row begins exactly at the top edge of the app.
+    this.canvas.style.left = "0px";
+    this.canvas.style.top = `${-this.upperRevealHeight}px`;
+    this.canvas.style.width = `${this.width}px`;
+    this.canvas.style.height = `${this.height}px`;
 
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
@@ -98,11 +141,6 @@ export class OceanEngine {
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
     this.ctx.imageSmoothingEnabled = false;
-
-    this.cellW = this.width / TARGET_COLUMNS;
-    this.cellH = this.cellW * CELL_HEIGHT_RATIO;
-    this.cols = TARGET_COLUMNS;
-    this.rows = Math.ceil(this.height / this.cellH) + 1;
 
     this.staticLayer.width = Math.round(this.width * this.dpr);
     this.staticLayer.height = Math.round(this.height * this.dpr);
@@ -129,6 +167,7 @@ export class OceanEngine {
     if (useNewSeed || !this.seed) this.seed = randomSeed();
 
     this.resetRng();
+    this.generateUpperWaterProfile();
     this.generateTerrain();
     this.generateReefLife();
     this.generateFish();
@@ -143,6 +182,131 @@ export class OceanEngine {
   resetRng() {
     this.rng = createRng(this.seed);
     this.random = randomHelpers(this.rng);
+  }
+
+  generateUpperWaterProfile() {
+    const {
+      rand,
+      randInt,
+      choose,
+      chance
+    } = this.random;
+
+    this.reflectionCascades = [];
+    this.surfacePhase = rand(
+      0,
+      Math.PI * 2
+    );
+
+    const surfaceBoundaryRow =
+      this.upperRows -
+      SURFACE_HIDDEN_MARGIN_CELLS;
+
+    // Toda a extensão superior agora pertence à água/reflexos.
+    // Mantemos apenas uma pequena margem no topo para os caracteres
+    // não parecerem cortados quando o pull chega ao máximo.
+    const reflectionTop = 0.8;
+
+    const reflectionBottom =
+      surfaceBoundaryRow -
+      0.60;
+
+    const availableReflectionRows =
+      Math.max(
+        3,
+        reflectionBottom -
+        reflectionTop
+      );
+
+    // Um pouco mais de grupos porque a área que antes era ocupada pela
+    // cidade e pelo ========T======== agora também pode receber reflexos.
+    const cascadeCount =
+      randInt(15, 23);
+
+    for (
+      let index = 0;
+      index < cascadeCount;
+      index += 1
+    ) {
+      const depthRows =
+        rand(
+          Math.max(
+            2.0,
+            availableReflectionRows *
+            0.15
+          ),
+          Math.max(
+            3.4,
+            availableReflectionRows *
+            0.52
+          )
+        );
+
+      const bottomRow =
+        rand(
+          reflectionTop +
+          Math.min(
+            1.4,
+            availableReflectionRows *
+            0.10
+          ),
+          reflectionBottom
+        );
+
+      const topRow =
+        Math.max(
+          reflectionTop,
+          bottomRow -
+          depthRows
+        );
+
+      this.reflectionCascades.push({
+        centerX:
+          rand(
+            0.8,
+            this.cols - 0.8
+          ),
+        width:
+          rand(3.2, 10.8),
+        topRow,
+        bottomRow,
+        rowStep:
+          choose([
+            0.44,
+            0.48,
+            0.52,
+            0.58
+          ]),
+        phase:
+          rand(
+            0,
+            Math.PI * 2
+          ),
+        rowPhaseOffset:
+          rand(0.48, 0.76),
+        lateralJitter:
+          rand(0.06, 0.26),
+        density:
+          rand(0.66, 0.92),
+        color:
+          chance(0.88)
+            ? choose([
+                PALETTE.paleCyan,
+                PALETTE.cyan
+              ])
+            : choose([
+                PALETTE.blue,
+                PALETTE.yellow
+              ]),
+        alpha:
+          rand(0.22, 0.48),
+        glyphOffset:
+          randInt(
+            0,
+            REFLECTION_GLYPHS.length - 1
+          )
+      });
+    }
   }
 
   generateTerrain() {
@@ -1051,22 +1215,46 @@ export class OceanEngine {
     const ctx = this.staticCtx;
     ctx.clearRect(0, 0, this.width, this.height);
 
-    const gradient = ctx.createRadialGradient(
-      this.width * 0.5,
-      this.height * 0.18,
+    // One continuous background for both the off-screen surface region and
+    // the underwater viewport. There is no second scene and no hard color cut.
+    const gradient = ctx.createLinearGradient(
       0,
-      this.width * 0.5,
-      this.height * 0.56,
-      Math.max(this.width, this.height) * 0.78
+      0,
+      0,
+      this.height
     );
-    gradient.addColorStop(0, "#0827c9");
-    gradient.addColorStop(0.52, PALETTE.background);
+
+    gradient.addColorStop(0, "#0a36b8");
+    gradient.addColorStop(
+      Math.max(
+        0.05,
+        (this.upperRevealHeight * 0.72) / this.height
+      ),
+      "#082ec0"
+    );
+    gradient.addColorStop(
+      Math.min(
+        0.45,
+        this.upperRevealHeight / this.height
+      ),
+      "#0827c9"
+    );
+    gradient.addColorStop(0.58, PALETTE.background);
     gradient.addColorStop(1, "#020a58");
+
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.width, this.height);
 
     for (const item of this.terrain) {
-      this.drawStringToContext(ctx, item.glyph, item.x, item.y, item.color, item.alpha, 0.92);
+      this.drawStringToContext(
+        ctx,
+        item.glyph,
+        item.x,
+        item.y,
+        item.color,
+        item.alpha,
+        0.92
+      );
     }
   }
 
@@ -1149,12 +1337,290 @@ export class OceanEngine {
       this.height
     );
 
+    this.drawUpperWater(time);
     this.drawSediment(time);
     this.drawReefMutations(time);
     this.drawPlants(time);
     this.drawReefCrawlers(time);
     this.drawBubbles();
     this.drawFish(time);
+  }
+
+  drawUpperWater(time) {
+    const intensity = Math.max(
+      0,
+      this.config.animationIntensity /
+      100
+    );
+
+    const ctx = this.ctx;
+
+    const surfaceBoundaryRow =
+      this.upperRows -
+      SURFACE_HIDDEN_MARGIN_CELLS;
+
+    const phaseTime =
+      time *
+      SURFACE_BASE_PHASE_PER_MS *
+      intensity;
+
+    // ---------------------------------------------------------------
+    // WATER REFLECTION CASCADES
+    // ---------------------------------------------------------------
+    for (
+      const cascade
+      of this.reflectionCascades
+    ) {
+      let rowIndex = 0;
+
+      for (
+        let row = cascade.topRow;
+        row <= cascade.bottomRow;
+        row += cascade.rowStep
+      ) {
+        const progress =
+          (
+            row -
+            cascade.topRow
+          ) /
+          Math.max(
+            0.001,
+            cascade.bottomRow -
+            cascade.topRow
+          );
+
+        const cascadePhase =
+          phaseTime +
+          cascade.phase -
+          rowIndex *
+          cascade.rowPhaseOffset;
+
+        const wave =
+          (
+            Math.sin(
+              cascadePhase
+            ) +
+            1
+          ) / 2;
+
+        const secondary =
+          (
+            Math.sin(
+              cascadePhase *
+              0.53 +
+              cascade.phase *
+              1.7
+            ) +
+            1
+          ) / 2;
+
+        const visibility =
+          wave * 0.72 +
+          secondary * 0.28;
+
+        if (
+          visibility <
+          1 -
+          cascade.density
+        ) {
+          rowIndex += 1;
+          continue;
+        }
+
+        const taper =
+          1 -
+          Math.abs(
+            progress - 0.58
+          ) *
+          0.62;
+
+        const fragmentWidth =
+          Math.max(
+            0.85,
+            cascade.width *
+            taper *
+            (
+              0.52 +
+              visibility *
+              0.58
+            )
+          );
+
+        const centerX =
+          cascade.centerX +
+          Math.sin(
+            cascadePhase *
+            0.72
+          ) *
+          cascade.lateralJitter +
+          Math.sin(
+            cascade.phase +
+            progress *
+            4.2
+          ) *
+          0.10;
+
+        const left =
+          centerX -
+          fragmentWidth / 2;
+
+        const right =
+          centerX +
+          fragmentWidth / 2;
+
+        let fragmentIndex = 0;
+
+        for (
+          let x = left;
+          x <= right;
+          x += 0.64
+        ) {
+          const gapSignal =
+            Math.sin(
+              cascadePhase *
+              1.31 +
+              x * 1.77 +
+              rowIndex *
+              0.84
+            );
+
+          if (
+            gapSignal < -0.58
+          ) {
+            fragmentIndex += 1;
+            continue;
+          }
+
+          const glyphIndex =
+            Math.abs(
+              cascade.glyphOffset +
+              rowIndex +
+              fragmentIndex +
+              Math.floor(
+                visibility *
+                3
+              )
+            ) %
+            REFLECTION_GLYPHS.length;
+
+          const centerBoost =
+            1 -
+            Math.min(
+              1,
+              Math.abs(
+                x -
+                centerX
+              ) /
+              Math.max(
+                0.2,
+                fragmentWidth /
+                2
+              )
+            );
+
+          const alpha =
+            cascade.alpha *
+            (
+              0.52 +
+              visibility * 0.62
+            ) *
+            (
+              0.64 +
+              centerBoost * 0.42
+            );
+
+          this.drawCellGlyph(
+            ctx,
+            REFLECTION_GLYPHS[
+              glyphIndex
+            ],
+            x,
+            row +
+              Math.sin(
+                cascadePhase +
+                x * 0.18
+              ) *
+              0.03,
+            cascade.color,
+            Math.min(
+              0.78,
+              alpha
+            ),
+            visibility > 0.68
+              ? 0.66
+              : 0.56,
+            false
+          );
+
+          fragmentIndex += 1;
+        }
+
+        rowIndex += 1;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // ORGANIC WATERLINE / OCEAN SURFACE
+    // ---------------------------------------------------------------
+    // This is the only divider that remains. It marks the actual point
+    // where the bucket leaves the underwater area during the pull.
+    for (
+      let col = 0;
+      col < this.cols;
+      col += 1
+    ) {
+      const phase =
+        phaseTime +
+        col * 0.46 +
+        this.surfacePhase;
+
+      const shimmer =
+        (
+          Math.sin(phase) +
+          1
+        ) / 2;
+
+      const secondShimmer =
+        (
+          Math.sin(
+            phase * 0.47 +
+            col * 0.19
+          ) +
+          1
+        ) / 2;
+
+      const combined =
+        shimmer * 0.68 +
+        secondShimmer * 0.32;
+
+      const glyph =
+        combined > 0.72
+          ? "~"
+          : combined > 0.40
+            ? "="
+            : "_";
+
+      const y =
+        surfaceBoundaryRow +
+        Math.sin(
+          phase * 0.58
+        ) *
+        0.055;
+
+      this.drawCellGlyph(
+        ctx,
+        glyph,
+        col,
+        y,
+        combined > 0.74
+          ? PALETTE.paleCyan
+          : PALETTE.cyan,
+        0.52 +
+          combined * 0.28,
+        0.70,
+        false
+      );
+    }
   }
 
   drawSediment(time) {
@@ -1405,8 +1871,29 @@ export class OceanEngine {
 
   drawStringToContext(ctx, text, x, y, color, alpha = 1, scale = 1, mirror = false) {
     const glyphs = Array.from(text);
+
+    // Ocean entities keep their old viewport-relative coordinates. When they
+    // are rendered into the tall world canvas, they are shifted down by the
+    // hidden upper extension. External contexts (BucketLayer) are not shifted.
+    const isWorldContext =
+      ctx === this.ctx ||
+      ctx === this.staticCtx;
+
+    const targetRow =
+      y +
+      (isWorldContext ? this.upperRows : 0);
+
     glyphs.forEach((glyph, index) => {
-      this.drawCellGlyph(ctx, glyph, x + index, y, color, alpha, scale, mirror);
+      this.drawCellGlyph(
+        ctx,
+        glyph,
+        x + index,
+        targetRow,
+        color,
+        alpha,
+        scale,
+        mirror
+      );
     });
   }
 

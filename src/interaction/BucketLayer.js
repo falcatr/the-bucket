@@ -10,7 +10,9 @@ const ACTIVE_FILL_STAGES = ["░", "▒", "▓", "█"];
 const SWIPE_POSE_DURATION_MS = 520;
 const BUCKET_CENTER_Y = 0.39;
 const RETURN_DURATION_MS = 390;
-const MAX_PULL_VIEWPORT_RATIO = 0.22;
+// Maximum visual travel is intentionally independent from the refresh
+// threshold. Users can keep pulling after the gesture is already armed.
+const MAX_PULL_VIEWPORT_RATIO = 0.50;
 
 // Arte baseada no arquivo balde_ascii.txt enviado como referência.
 // A escala do balde é uniforme e vem do config/debug para nunca deformar a arte.
@@ -189,15 +191,23 @@ export class BucketLayer {
     const isMostlyVertical = downwardDistance >= Math.abs(deltaX) * 0.82;
 
     this.pointer.rawPullDistance = downwardDistance;
+
+    const visualDistance =
+      this.calculateResistedDistance(
+        downwardDistance
+      );
+
+    // Threshold is measured using the actual on-screen movement of the
+    // ocean. The debug value in cells therefore matches what the user sees.
     this.pointer.armed =
-      isMostlyVertical && downwardDistance >= this.pullThresholdPx;
+      isMostlyVertical &&
+      visualDistance >=
+        this.pullThresholdPx;
 
-    const visualDistance = this.calculateResistedDistance(downwardDistance);
-
-    // Pull-to-refresh: o gesto desce e desloca a camada do mar para baixo
-    // em coordenadas de tela. Isso revela a região que está ACIMA do mar,
-    // no topo da viewport, enquanto o balde permanece fixo na camada de
-    // interação. Nenhuma troca de pose acontece durante o drag.
+    // Pull-to-refresh: o gesto apenas desloca o MESMO canvas alto do oceano.
+    // A região de reflexos já existe e está animando acima da viewport; ao
+    // mover o canvas para baixo, essa continuação é revelada sem trocar cena
+    // ou expor uma camada de background separada.
     this.setOceanOffset(visualDistance);
   }
 
@@ -209,10 +219,24 @@ export class BucketLayer {
 
     const deltaX = this.pointer.currentX - this.pointer.startX;
     const deltaY = this.pointer.currentY - this.pointer.startY;
-    const downwardDistance = Math.max(0, deltaY);
-    const isVerticalEnough = downwardDistance >= Math.abs(deltaX) * 1.05;
+    const downwardDistance = Math.max(
+      0,
+      deltaY
+    );
+
+    const visualDistance =
+      this.calculateResistedDistance(
+        downwardDistance
+      );
+
+    const isVerticalEnough =
+      downwardDistance >=
+      Math.abs(deltaX) * 1.05;
+
     const shouldRefresh =
-      isVerticalEnough && downwardDistance >= this.pullThresholdPx;
+      isVerticalEnough &&
+      visualDistance >=
+        this.pullThresholdPx;
 
     // A pose do balde só pode mudar depois que o usuário SOLTA o input.
     // Ultrapassar o threshold durante o drag apenas arma a atualização.
@@ -250,16 +274,31 @@ export class BucketLayer {
   calculateResistedDistance(rawDistance) {
     if (rawDistance <= 0) return 0;
 
-    const threshold = Math.max(1, this.pullThresholdPx);
-    const viewportHeight = this.canvas.getBoundingClientRect().height;
+    const viewportHeight =
+      this.canvas.getBoundingClientRect().height;
+
     const maxVisualDistance = Math.min(
-      viewportHeight * MAX_PULL_VIEWPORT_RATIO,
-      threshold * 1.45
+      viewportHeight *
+        MAX_PULL_VIEWPORT_RATIO,
+      this.ocean.upperRevealHeight *
+        0.94
     );
 
-    // Curva de resistência semelhante a overscroll/pull-to-refresh:
-    // no começo responde rápido e vai ficando mais "pesado".
-    return maxVisualDistance * (1 - Math.exp(-rawDistance / threshold));
+    // Threshold and drag feel are now independent. Changing "Distância
+    // para atualizar" only changes when release becomes valid.
+    const resistanceDistance =
+      viewportHeight * 0.20;
+
+    return maxVisualDistance * (
+      1 -
+      Math.exp(
+        -rawDistance /
+        Math.max(
+          1,
+          resistanceDistance
+        )
+      )
+    );
   }
 
   setOceanOffset(offsetY) {

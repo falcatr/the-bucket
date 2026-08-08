@@ -300,7 +300,11 @@ button { -webkit-touch-callout: none; }
   cursor: grabbing;
 }
 
-/* v0.2.1 — o oceano se desloca independentemente durante o pull-to-refresh. */
+/*
+  O canvas do oceano é mais alto que a viewport e começa deslocado para cima.
+  O pull apenas move esse MESMO canvas para baixo, revelando a continuação
+  que já estava renderizada fora da tela.
+*/
 .ocean-canvas {
   will-change: transform;
   transform: translate3d(0, 0, 0);
