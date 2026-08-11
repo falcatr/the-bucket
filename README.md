@@ -1,110 +1,151 @@
-# ASCII Ocean Mobile v0.2.11
+# ASCII Ocean Mobile v0.3.1
 
-Refatoração do critério de pull-to-refresh para funcionar de forma
-consistente entre diferentes resoluções e aspect ratios.
+Patch de calibração sobre a v0.3.0. Nenhuma mecânica foi alterada.
 
-## Removido: Distância para atualizar
+## Novos defaults
 
-O slider por células foi removido.
+- Altura máxima dos corais: `35%`
+- Velocidade de esvaziamento: `12x`
+- Elasticidade do balde: `1.6 cel`
 
-Mesmo quando a distância era calculada visualmente, um número fixo
-ainda precisava ser recalibrado entre desktop, Device Mode e aparelhos
-físicos.
+Todo o restante permanece igual à v0.3.0.
 
-## Nova condição
+---
 
-O refresh agora depende da geometria da cena.
+Início da série `0.3.x`, focada em consolidar o ciclo do refresh e
+preparar a interação para continuar crescendo sem encarecer o renderer
+em aparelhos mobile mais antigos.
 
-A referência no balde é:
+## Nova seed no release
+
+A nova combinação procedural de:
+
+- corais;
+- algas;
+- peixes;
+- vida do recife;
+- reflexos superiores;
+
+agora é criada no momento em que o usuário SOLTA um pull aceito.
+
+O esvaziamento do balde deixa de controlar quando o conteúdo muda.
+Ele é somente o fake loading visual.
+
+Fluxo:
 
 ```text
-  ,--[___]--,
+pull válido
+    ↓
+release
+    ↓
+NOVA SEED IMEDIATAMENTE
+    ↓
+IDLE-SWIPE continua visível
+    ↓
+balde esvazia sobre o mar novo
+    ↓
+canvas volta ao repouso
+    ↓
+IDLE-LOADING
 ```
 
-Essa é a linha `IDLE_LOADING_ART[1]`.
+## Requisito de pelo menos uma faixa branca
 
-O gesto só fica armado quando a superfície animada da água passa
-totalmente para baixo dessa linha.
+Um pull só entra no ciclo de refresh se duas condições forem verdadeiras:
+
+1. a linha `,--[___]--,` já saiu da água;
+2. existe pelo menos uma faixa 100% completa/branca.
+
+Se o usuário puxar cedo demais, mesmo ultrapassando a superfície:
+
+- nenhuma nova seed é criada;
+- não entra em IDLE-SWIPE;
+- o canvas simplesmente retorna;
+- o loading em andamento continua de onde estava.
+
+Se há uma faixa branca e outra amarela parcial:
+
+- a nova seed acontece no release;
+- a faixa amarela é descartada;
+- somente as faixas brancas são carregadas para o IDLE-SWIPE.
+
+## Velocidade de esvaziamento
+
+O range foi ampliado para:
 
 ```text
-NÃO ARMADO
-
-~~~~~ superfície ~~~~~
-      ___
-  ,--[___]--,
- /            \
-
-
-ARMADO
-
-      ___
-  ,--[___]--,  ← borda superior inteira fora da água
-
-~~~~~ superfície ~~~~~
- /            \
+0.5x → 16x
 ```
 
-A troca para `IDLE-SWIPE` continua acontecendo somente no release.
+O valor salvo anteriormente continua sendo preservado no
+`localStorage`, portanto esta versão não força um novo default.
 
-## Como é calculado
+## Implementação de velocidade / performance
 
-Em cada movimento são comparados em coordenadas reais da tela:
+A velocidade não cria mais trabalho conforme aumenta.
 
-- Y atual da linha de superfície;
-- Y da borda inferior da linha `,--[___]--,`.
+Não existe:
 
-O cálculo já leva em conta:
+- um timer por célula;
+- `setInterval` para cada barra;
+- partículas extras em velocidades altas;
+- mais updates quando o slider vai para 16x.
 
-- resolução;
-- aspect ratio;
-- largura lógica da grade;
-- `cellH` real;
-- `bucketScale`;
-- posição vertical do balde;
-- tamanho da arte;
-- extensão superior escondida;
-- deslocamento atual do canvas.
+Existe apenas:
 
-Portanto mudar o balde de `1x` para outro tamanho também recalibra
-automaticamente o ponto de refresh.
+```text
+requestAnimationFrame
+       +
+1 relógio drainElapsedMs
+       +
+cálculo matemático do estado de cada slot
+```
 
-## Margem de segurança
+O balde possui no máximo 39 slots de loading (`3 × 13`), então cada
+frame continua avaliando a mesma quantidade fixa de posições.
 
-Existe apenas uma pequena margem interna:
+`16x` simplesmente reduz:
 
 ```js
-REFRESH_CLEARANCE_CELLS = 0.08;
+drainSlotDurationMs =
+  bucketLoadingSlotDurationMs /
+  bucketDrainSpeedMultiplier
 ```
 
-Ela evita considerar refresh exatamente no pixel em que a superfície
-e a borda do balde se tocam.
+Se um aparelho perder frames, o estado é derivado do tempo decorrido.
+A animação pode pular um estágio visual intermediário, mas não fica
+mais lenta e não acumula callbacks atrasados.
 
-Isso não é um threshold por device; é apenas uma tolerância geométrica.
+## Otimização adicional
+
+A ordem das linhas que precisam ser esvaziadas é calculada uma única
+vez no release e reutilizada durante todo o drain.
+
+Também foi removida a criação de pequenos objetos/arrays para cada
+slot em cada frame.
+
+Assim, aumentar de `4x` para `16x` não aumenta o custo computacional
+do ciclo.
+
+## Comportamentos preservados
+
+- pull responsivo baseado na geometria balde ↔ superfície;
+- balde só troca para `IDLE-SWIPE` no release;
+- aproximadamente 20% da parte superior permanece visível durante
+  o fake loading;
+- efeito elástico do balde continua configurável;
+- estrutura do balde e faixas concluídas usam branco puro;
+- intensidade geral do mar permanece fixa em `150%`;
+- tamanho do balde permanece fixo em `1x`.
 
 ## Debug atual
-
-Permanecem:
 
 - Distância vertical do coral
 - Distância horizontal do coral
 - Altura máxima dos corais
 - Altura máxima das algas
-- Intensidade de animação
-- Tamanho do balde
-
-`Distância para atualizar` não existe mais.
-
-## Demais comportamentos
-
-Mantidos:
-
-- pull visual de até aproximadamente 50% da viewport;
-- reflexos em cascata acima da superfície;
-- superfície fora da tela em repouso;
-- balde fixo durante o pull;
-- refresh apenas no release;
-- balde `1x` como default;
-- intensidade `150%` como default.
+- Velocidade de esvaziamento (`0.5x–16x`)
+- Elasticidade do balde
 
 ## Rodando
 

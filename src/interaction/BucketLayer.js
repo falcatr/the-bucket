@@ -1,13 +1,13 @@
-const BUCKET_COLOR = "#ff8c42";
+const BUCKET_COLOR = "#ffffff";
 const EMPTY_BAR_COLOR = "#7188b8";
 const ACTIVE_BAR_COLOR = "#fff35d";
-const COMPLETE_BAR_COLOR = "#f2ffff";
+const COMPLETE_BAR_COLOR = "#ffffff";
 
 const EMPTY_BAR_GLYPH = "≡";
 const FILL_BAR_GLYPH = "█";
 const ACTIVE_FILL_STAGES = ["░", "▒", "▓", "█"];
+const DRAIN_FILL_STAGES = ["█", "▓", "▒", "░"];
 
-const SWIPE_POSE_DURATION_MS = 520;
 const BUCKET_CENTER_Y = 0.39;
 
 // `IDLE_LOADING_ART[1]` is the upper rim:
@@ -16,13 +16,21 @@ const BUCKET_CENTER_Y = 0.39;
 // the animated waterline. This is resolution-independent.
 const REFRESH_BUCKET_REFERENCE_ROW = 1;
 const REFRESH_CLEARANCE_CELLS = 0.08;
-const RETURN_DURATION_MS = 390;
-// Maximum visual travel is intentionally independent from the refresh
-// threshold. Users can keep pulling after the gesture is already armed.
+
 const MAX_PULL_VIEWPORT_RATIO = 0.50;
 
+// After a valid release, keep approximately this much of the hidden
+// upper-water region visible while the fake refresh/drain runs.
+const SWIPE_HOLD_VIEWPORT_RATIO = 0.20;
+
+const RELEASE_TO_HOLD_DURATION_MS = 360;
+const RETURN_TO_OCEAN_DURATION_MS = 420;
+
+// Damped bucket bounce after release. Amplitude comes from debug config.
+const BOUNCE_PERIOD_MS = 560;
+const BOUNCE_DECAY_MS = 1250;
+
 // Arte baseada no arquivo balde_ascii.txt enviado como referência.
-// A escala do balde é uniforme e vem do config/debug para nunca deformar a arte.
 const IDLE_LOADING_ART = [
   "      ___",
   "  ,--[___]--,",
@@ -50,28 +58,55 @@ const IDLE_SWIPE_ART = [
   " `'-.,_____,.-''"
 ];
 
-// O preenchimento continua de baixo para cima, mas agora toda a área
-// interna entre as bordas verticais é ocupada pela barra.
+// Loading fills bottom -> middle -> top.
 const LOADING_ROWS = [8, 7, 6];
 const LOADING_START_COLUMN = 1;
+
+// IDLE-SWIPE has one extra leading space, so its 13-cell interior starts at 2.
+const SWIPE_LOADING_START_COLUMN = 2;
 const LOADING_SLOT_COUNT = 13;
+const LOADING_ROW_COUNT = LOADING_ROWS.length;
 
 export class BucketLayer {
-  constructor(canvas, oceanEngine, { onRefresh } = {}) {
+  constructor(
+    canvas,
+    oceanEngine,
+    {
+      onRefresh
+    } = {}
+  ) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
-    this.ocean = oceanEngine;
-    this.onRefresh = onRefresh;
+    this.ctx =
+      canvas.getContext("2d");
+    this.ocean =
+      oceanEngine;
+    this.onRefresh =
+      onRefresh;
 
+    // loading | swipe
     this.mode = "loading";
+
+    // draining | returning | null
+    this.swipePhase = null;
+
     this.loadingElapsedMs = 0;
-    this.swipePoseElapsedMs = 0;
-    this.lastFrame = performance.now();
+
+    this.drainElapsedMs = 0;
+    this.drainCompletedRows = 0;
+    this.drainRowOrder = [];
+    this.drainFinished = false;
+
+    this.bounceElapsedMs = 0;
+
+    this.lastFrame =
+      performance.now();
     this.frameHandle = 0;
     this.resizeObserver = null;
 
     this.oceanOffsetY = 0;
-    this.returnAnimation = null;
+
+    // Generic visual translation animation for the same tall ocean canvas.
+    this.offsetAnimation = null;
 
     this.pointer = {
       active: false,
@@ -84,66 +119,215 @@ export class BucketLayer {
       armed: false
     };
 
-    this.boundLoop = this.loop.bind(this);
-    this.boundPointerDown = this.handlePointerDown.bind(this);
-    this.boundPointerMove = this.handlePointerMove.bind(this);
-    this.boundPointerUp = this.handlePointerUp.bind(this);
-    this.boundPointerCancel = this.handlePointerCancel.bind(this);
+    this.boundLoop =
+      this.loop.bind(this);
+
+    this.boundPointerDown =
+      this.handlePointerDown.bind(this);
+
+    this.boundPointerMove =
+      this.handlePointerMove.bind(this);
+
+    this.boundPointerUp =
+      this.handlePointerUp.bind(this);
+
+    this.boundPointerCancel =
+      this.handlePointerCancel.bind(this);
   }
 
   start() {
     this.resize();
 
-    this.resizeObserver = new ResizeObserver(() => {
-      this.resize();
-      this.setOceanOffset(0);
-    });
-    this.resizeObserver.observe(this.canvas);
+    this.resizeObserver =
+      new ResizeObserver(() => {
+        this.resize();
 
-    this.canvas.addEventListener("pointerdown", this.boundPointerDown);
-    this.canvas.addEventListener("pointermove", this.boundPointerMove);
-    this.canvas.addEventListener("pointerup", this.boundPointerUp);
-    this.canvas.addEventListener("pointercancel", this.boundPointerCancel);
+        if (
+          this.mode === "swipe"
+        ) {
+          this.setOceanOffset(
+            this.getSwipeHoldOffset()
+          );
+        } else {
+          this.setOceanOffset(0);
+        }
+      });
 
-    this.lastFrame = performance.now();
-    this.frameHandle = requestAnimationFrame(this.boundLoop);
+    this.resizeObserver.observe(
+      this.canvas
+    );
+
+    this.canvas.addEventListener(
+      "pointerdown",
+      this.boundPointerDown
+    );
+
+    this.canvas.addEventListener(
+      "pointermove",
+      this.boundPointerMove
+    );
+
+    this.canvas.addEventListener(
+      "pointerup",
+      this.boundPointerUp
+    );
+
+    this.canvas.addEventListener(
+      "pointercancel",
+      this.boundPointerCancel
+    );
+
+    this.lastFrame =
+      performance.now();
+
+    this.frameHandle =
+      requestAnimationFrame(
+        this.boundLoop
+      );
   }
 
   destroy() {
-    cancelAnimationFrame(this.frameHandle);
+    cancelAnimationFrame(
+      this.frameHandle
+    );
+
     this.resizeObserver?.disconnect();
 
-    this.canvas.removeEventListener("pointerdown", this.boundPointerDown);
-    this.canvas.removeEventListener("pointermove", this.boundPointerMove);
-    this.canvas.removeEventListener("pointerup", this.boundPointerUp);
-    this.canvas.removeEventListener("pointercancel", this.boundPointerCancel);
+    this.canvas.removeEventListener(
+      "pointerdown",
+      this.boundPointerDown
+    );
+
+    this.canvas.removeEventListener(
+      "pointermove",
+      this.boundPointerMove
+    );
+
+    this.canvas.removeEventListener(
+      "pointerup",
+      this.boundPointerUp
+    );
+
+    this.canvas.removeEventListener(
+      "pointercancel",
+      this.boundPointerCancel
+    );
 
     this.setOceanOffset(0);
   }
 
   resize() {
-    const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect =
+      this.canvas.getBoundingClientRect();
 
-    this.canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    this.canvas.height = Math.max(1, Math.round(rect.height * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
-    this.ctx.imageSmoothingEnabled = false;
+    const dpr =
+      Math.min(
+        window.devicePixelRatio || 1,
+        2
+      );
+
+    this.canvas.width =
+      Math.max(
+        1,
+        Math.round(
+          rect.width * dpr
+        )
+      );
+
+    this.canvas.height =
+      Math.max(
+        1,
+        Math.round(
+          rect.height * dpr
+        )
+      );
+
+    this.ctx.setTransform(
+      dpr,
+      0,
+      0,
+      dpr,
+      0,
+      0
+    );
+
+    this.ctx.textAlign =
+      "center";
+
+    this.ctx.textBaseline =
+      "middle";
+
+    this.ctx.imageSmoothingEnabled =
+      false;
   }
 
   get loadingSlotDurationMs() {
-    return Math.max(50, Number(this.ocean.config.bucketLoadingSlotDurationMs) || 1000);
+    return Math.max(
+      50,
+      Number(
+        this.ocean.config
+          .bucketLoadingSlotDurationMs
+      ) || 1000
+    );
+  }
+
+  get drainSpeedMultiplier() {
+    const configured =
+      Number(
+        this.ocean.config
+          .bucketDrainSpeedMultiplier
+      );
+
+    return Math.max(
+      0.25,
+      Math.min(
+        16,
+        Number.isFinite(configured)
+          ? configured
+          : 2
+      )
+    );
+  }
+
+  get drainSlotDurationMs() {
+    return (
+      this.loadingSlotDurationMs /
+      this.drainSpeedMultiplier
+    );
+  }
+
+  get bucketBounceCells() {
+    const configured =
+      Number(
+        this.ocean.config
+          .bucketBounceCells
+      );
+
+    return Math.max(
+      0,
+      Math.min(
+        4,
+        Number.isFinite(configured)
+          ? configured
+          : 0.9
+      )
+    );
   }
 
   get bucketScale() {
-    const configured = Number(this.ocean.config.bucketScale);
+    const configured =
+      Number(
+        this.ocean.config
+          .bucketScale
+      );
+
     return Math.max(
       0.2,
       Math.min(
         1.5,
-        Number.isFinite(configured) ? configured : 0.5
+        Number.isFinite(configured)
+          ? configured
+          : 1
       )
     );
   }
@@ -160,7 +344,6 @@ export class BucketLayer {
       -this.ocean.upperRevealHeight +
       visualOceanOffset;
 
-    // drawCellGlyph uses the center of the logical row.
     return (
       canvasTop +
       (
@@ -175,11 +358,10 @@ export class BucketLayer {
     const {
       originY
     } = this.getArtLayout(
-      IDLE_LOADING_ART
+      IDLE_LOADING_ART,
+      false
     );
 
-    // `,--[___]--,` is row 1. We compare against its BOTTOM edge so the
-    // entire rim row must already be outside the underwater region.
     const referenceRowTop =
       (
         originY +
@@ -215,84 +397,278 @@ export class BucketLayer {
     );
   }
 
-  resetLoading() {
-    this.loadingElapsedMs = 0;
+  getSwipeHoldOffset() {
+    const viewportHeight =
+      this.canvas
+        .getBoundingClientRect()
+        .height;
+
+    return Math.min(
+      viewportHeight *
+        SWIPE_HOLD_VIEWPORT_RATIO,
+      this.ocean.upperRevealHeight *
+        0.90
+    );
   }
 
-  triggerRefresh() {
-    if (this.mode === "swipe") return;
+  getCompletedLoadingRows() {
+    const rowDuration =
+      this.loadingSlotDurationMs *
+      LOADING_SLOT_COUNT;
+
+    return Math.max(
+      0,
+      Math.min(
+        LOADING_ROW_COUNT,
+        Math.floor(
+          this.loadingElapsedMs /
+          rowDuration
+        )
+      )
+    );
+  }
+
+  getDrainTotalDurationMs() {
+    return (
+      this.drainCompletedRows *
+      LOADING_SLOT_COUNT *
+      this.drainSlotDurationMs
+    );
+  }
+
+  getBucketBounceOffsetCells() {
+    if (
+      this.mode !== "swipe" ||
+      this.swipePhase !== "draining" ||
+      this.bucketBounceCells <= 0
+    ) {
+      return 0;
+    }
+
+    const time =
+      this.bounceElapsedMs;
+
+    const decay =
+      Math.exp(
+        -time /
+        BOUNCE_DECAY_MS
+      );
+
+    const oscillation =
+      Math.sin(
+        (
+          Math.PI * 2 *
+          time
+        ) /
+        BOUNCE_PERIOD_MS
+      );
+
+    // Positive row offset moves the bucket downward first, then upward,
+    // producing the requested elastic "dip back toward the sea".
+    return (
+      this.bucketBounceCells *
+      decay *
+      oscillation
+    );
+  }
+
+  beginSwipeDrain(
+    completedRows
+  ) {
+    if (
+      this.mode === "swipe" ||
+      completedRows <= 0
+    ) {
+      return false;
+    }
+
+    // Only fully-white rows enter IDLE-SWIPE. Any yellow/incomplete row
+    // disappears at release.
+    this.drainCompletedRows =
+      Math.min(
+        LOADING_ROW_COUNT,
+        completedRows
+      );
+
+    // Cache the small row order once. Drain rendering stays allocation-free
+    // even at 16x; speed only changes time-to-state, never update frequency.
+    this.drainRowOrder =
+      LOADING_ROWS
+        .slice(
+          0,
+          this.drainCompletedRows
+        )
+        .reverse();
+
+    this.loadingElapsedMs = 0;
+    this.drainElapsedMs = 0;
+    this.bounceElapsedMs = 0;
+    this.drainFinished = false;
 
     this.mode = "swipe";
-    this.swipePoseElapsedMs = 0;
-    this.resetLoading();
+    this.swipePhase =
+      "draining";
+
+    // The content refresh belongs to the RELEASE, not to the end of the fake
+    // loading. The new sea is immediately present behind IDLE-SWIPE.
     this.onRefresh?.();
+
+    this.startOffsetAnimation(
+      this.getSwipeHoldOffset(),
+      RELEASE_TO_HOLD_DURATION_MS
+    );
+
+    return true;
+  }
+
+  finishDrainAndReturn() {
+    if (
+      this.drainFinished
+    ) {
+      return;
+    }
+
+    this.drainFinished = true;
+    this.swipePhase =
+      "returning";
+
+    // The sea was already regenerated at release. Once the fake drain
+    // finishes, only the visual return to the underwater resting position
+    // remains.
+    this.startOffsetAnimation(
+      0,
+      RETURN_TO_OCEAN_DURATION_MS,
+      () => {
+        this.mode = "loading";
+        this.swipePhase = null;
+        this.drainElapsedMs = 0;
+        this.drainCompletedRows = 0;
+        this.drainRowOrder = [];
+        this.drainFinished = false;
+        this.bounceElapsedMs = 0;
+        this.loadingElapsedMs = 0;
+      }
+    );
   }
 
   handlePointerDown(event) {
-    if (this.mode === "swipe") return;
+    if (
+      this.mode === "swipe"
+    ) {
+      return;
+    }
 
-    this.returnAnimation = null;
+    this.offsetAnimation = null;
+
     this.pointer.active = true;
-    this.pointer.id = event.pointerId;
-    this.pointer.startX = event.clientX;
-    this.pointer.startY = event.clientY;
-    this.pointer.currentX = event.clientX;
-    this.pointer.currentY = event.clientY;
+    this.pointer.id =
+      event.pointerId;
+
+    this.pointer.startX =
+      event.clientX;
+
+    this.pointer.startY =
+      event.clientY;
+
+    this.pointer.currentX =
+      event.clientX;
+
+    this.pointer.currentY =
+      event.clientY;
+
     this.pointer.rawPullDistance = 0;
     this.pointer.armed = false;
 
     try {
-      this.canvas.setPointerCapture(event.pointerId);
+      this.canvas.setPointerCapture(
+        event.pointerId
+      );
     } catch {
-      // Pointer capture pode não existir em browsers mais antigos.
+      // Pointer capture may be unavailable in older browsers.
     }
   }
 
   handlePointerMove(event) {
-    if (!this.pointer.active || event.pointerId !== this.pointer.id) return;
+    if (
+      !this.pointer.active ||
+      event.pointerId !==
+        this.pointer.id
+    ) {
+      return;
+    }
 
-    this.pointer.currentX = event.clientX;
-    this.pointer.currentY = event.clientY;
+    this.pointer.currentX =
+      event.clientX;
 
-    const deltaX = this.pointer.currentX - this.pointer.startX;
-    const deltaY = this.pointer.currentY - this.pointer.startY;
-    const downwardDistance = Math.max(0, deltaY);
-    const isMostlyVertical = downwardDistance >= Math.abs(deltaX) * 0.82;
+    this.pointer.currentY =
+      event.clientY;
 
-    this.pointer.rawPullDistance = downwardDistance;
+    const deltaX =
+      this.pointer.currentX -
+      this.pointer.startX;
+
+    const deltaY =
+      this.pointer.currentY -
+      this.pointer.startY;
+
+    const downwardDistance =
+      Math.max(
+        0,
+        deltaY
+      );
+
+    const isMostlyVertical =
+      downwardDistance >=
+      Math.abs(deltaX) *
+        0.82;
+
+    this.pointer.rawPullDistance =
+      downwardDistance;
 
     const visualDistance =
       this.calculateResistedDistance(
         downwardDistance
       );
 
-    // Resolution-independent refresh rule: arm only when the real
-    // waterline has moved below the complete `,--[___]--,` rim.
     this.pointer.armed =
       isMostlyVertical &&
       this.isRefreshGeometrySatisfied(
         visualDistance
       );
 
-    // Pull-to-refresh: o gesto apenas desloca o MESMO canvas alto do oceano.
-    // A região de reflexos já existe e está animando acima da viewport; ao
-    // mover o canvas para baixo, essa continuação é revelada sem trocar cena
-    // ou expor uma camada de background separada.
-    this.setOceanOffset(visualDistance);
+    this.setOceanOffset(
+      visualDistance
+    );
   }
 
   handlePointerUp(event) {
-    if (!this.pointer.active || event.pointerId !== this.pointer.id) return;
+    if (
+      !this.pointer.active ||
+      event.pointerId !==
+        this.pointer.id
+    ) {
+      return;
+    }
 
-    this.pointer.currentX = event.clientX;
-    this.pointer.currentY = event.clientY;
+    this.pointer.currentX =
+      event.clientX;
 
-    const deltaX = this.pointer.currentX - this.pointer.startX;
-    const deltaY = this.pointer.currentY - this.pointer.startY;
-    const downwardDistance = Math.max(
-      0,
-      deltaY
-    );
+    this.pointer.currentY =
+      event.clientY;
+
+    const deltaX =
+      this.pointer.currentX -
+      this.pointer.startX;
+
+    const deltaY =
+      this.pointer.currentY -
+      this.pointer.startY;
+
+    const downwardDistance =
+      Math.max(
+        0,
+        deltaY
+      );
 
     const visualDistance =
       this.calculateResistedDistance(
@@ -301,39 +677,70 @@ export class BucketLayer {
 
     const isVerticalEnough =
       downwardDistance >=
-      Math.abs(deltaX) * 1.05;
+      Math.abs(deltaX) *
+        1.05;
+
+    const completedRows =
+      this.getCompletedLoadingRows();
 
     const shouldRefresh =
       isVerticalEnough &&
+      completedRows > 0 &&
       this.isRefreshGeometrySatisfied(
         visualDistance
       );
 
-    // A pose do balde só pode mudar depois que o usuário SOLTA o input.
-    // Ultrapassar o threshold durante o drag apenas arma a atualização.
-    this.releasePointer(event.pointerId);
+    this.releasePointer(
+      event.pointerId
+    );
 
-    if (shouldRefresh) {
-      this.triggerRefresh();
+    if (
+      shouldRefresh &&
+      this.beginSwipeDrain(
+        completedRows
+      )
+    ) {
+      return;
     }
 
-    this.startOceanReturn();
+    this.startOffsetAnimation(
+      0,
+      RETURN_TO_OCEAN_DURATION_MS
+    );
   }
 
   handlePointerCancel(event) {
-    if (!this.pointer.active || event.pointerId !== this.pointer.id) return;
+    if (
+      !this.pointer.active ||
+      event.pointerId !==
+        this.pointer.id
+    ) {
+      return;
+    }
 
-    this.releasePointer(event.pointerId);
-    this.startOceanReturn();
+    this.releasePointer(
+      event.pointerId
+    );
+
+    this.startOffsetAnimation(
+      0,
+      RETURN_TO_OCEAN_DURATION_MS
+    );
   }
 
   releasePointer(pointerId) {
     try {
-      if (this.canvas.hasPointerCapture(pointerId)) {
-        this.canvas.releasePointerCapture(pointerId);
+      if (
+        this.canvas.hasPointerCapture(
+          pointerId
+        )
+      ) {
+        this.canvas.releasePointerCapture(
+          pointerId
+        );
       }
     } catch {
-      // Sem ação: o gesto já pode ser finalizado sem capture.
+      // No-op.
     }
 
     this.pointer.active = false;
@@ -342,129 +749,278 @@ export class BucketLayer {
     this.pointer.armed = false;
   }
 
-  calculateResistedDistance(rawDistance) {
-    if (rawDistance <= 0) return 0;
+  calculateResistedDistance(
+    rawDistance
+  ) {
+    if (
+      rawDistance <= 0
+    ) {
+      return 0;
+    }
 
     const viewportHeight =
-      this.canvas.getBoundingClientRect().height;
+      this.canvas
+        .getBoundingClientRect()
+        .height;
 
-    const maxVisualDistance = Math.min(
-      viewportHeight *
-        MAX_PULL_VIEWPORT_RATIO,
-      this.ocean.upperRevealHeight *
-        0.94
-    );
+    const maxVisualDistance =
+      Math.min(
+        viewportHeight *
+          MAX_PULL_VIEWPORT_RATIO,
+        this.ocean.upperRevealHeight *
+          0.94
+      );
 
-    // Drag feel is independent from refresh validity. Refresh is
-    // determined by the live bucket ↔ waterline geometry.
     const resistanceDistance =
       viewportHeight * 0.20;
 
-    return maxVisualDistance * (
-      1 -
-      Math.exp(
-        -rawDistance /
-        Math.max(
-          1,
-          resistanceDistance
+    return (
+      maxVisualDistance *
+      (
+        1 -
+        Math.exp(
+          -rawDistance /
+          Math.max(
+            1,
+            resistanceDistance
+          )
         )
       )
     );
   }
 
   setOceanOffset(offsetY) {
-    this.oceanOffsetY = offsetY;
-    this.ocean.canvas.style.transform = `translate3d(0, ${offsetY.toFixed(2)}px, 0)`;
+    this.oceanOffsetY =
+      offsetY;
+
+    this.ocean.canvas.style.transform =
+      `translate3d(0, ${offsetY.toFixed(2)}px, 0)`;
   }
 
-  startOceanReturn() {
-    if (Math.abs(this.oceanOffsetY) < 0.5) {
-      this.setOceanOffset(0);
-      this.returnAnimation = null;
-      return;
-    }
-
-    this.returnAnimation = {
-      from: this.oceanOffsetY,
+  startOffsetAnimation(
+    targetOffset,
+    duration,
+    onComplete = null
+  ) {
+    this.offsetAnimation = {
+      from:
+        this.oceanOffsetY,
+      to:
+        targetOffset,
       elapsed: 0,
-      duration: RETURN_DURATION_MS
+      duration:
+        Math.max(
+          1,
+          duration
+        ),
+      onComplete
     };
   }
 
-  updateOceanReturn(deltaMs) {
-    if (!this.returnAnimation || this.pointer.active) return;
+  updateOffsetAnimation(deltaMs) {
+    if (
+      !this.offsetAnimation ||
+      this.pointer.active
+    ) {
+      return;
+    }
 
-    this.returnAnimation.elapsed += deltaMs;
-    const progress = Math.min(
-      1,
-      this.returnAnimation.elapsed / this.returnAnimation.duration
+    const animation =
+      this.offsetAnimation;
+
+    animation.elapsed +=
+      deltaMs;
+
+    const progress =
+      Math.min(
+        1,
+        animation.elapsed /
+        animation.duration
+      );
+
+    // easeOutCubic: quick response immediately after release,
+    // then a softer arrival at 20% / zero.
+    const eased =
+      1 -
+      Math.pow(
+        1 - progress,
+        3
+      );
+
+    this.setOceanOffset(
+      animation.from +
+      (
+        animation.to -
+        animation.from
+      ) *
+      eased
     );
 
-    // easeOutCubic dá a sensação de release elástico sem overshoot exagerado.
-    const eased = 1 - Math.pow(1 - progress, 3);
-    this.setOceanOffset(this.returnAnimation.from * (1 - eased));
+    if (
+      progress >= 1
+    ) {
+      const callback =
+        animation.onComplete;
 
-    if (progress >= 1) {
-      this.setOceanOffset(0);
-      this.returnAnimation = null;
+      this.setOceanOffset(
+        animation.to
+      );
+
+      this.offsetAnimation = null;
+
+      callback?.();
     }
   }
 
   update(deltaMs) {
-    this.updateOceanReturn(deltaMs);
+    this.updateOffsetAnimation(
+      deltaMs
+    );
 
-    if (this.mode === "loading") {
-      const totalSlots = LOADING_ROW_COUNT * LOADING_SLOT_COUNT;
-      const totalDuration = this.loadingSlotDurationMs * totalSlots;
+    if (
+      this.mode === "loading"
+    ) {
+      const totalSlots =
+        LOADING_ROW_COUNT *
+        LOADING_SLOT_COUNT;
 
-      this.loadingElapsedMs = Math.min(
-        totalDuration,
-        this.loadingElapsedMs + deltaMs
-      );
+      const totalDuration =
+        this.loadingSlotDurationMs *
+        totalSlots;
+
+      this.loadingElapsedMs =
+        Math.min(
+          totalDuration,
+          this.loadingElapsedMs +
+          deltaMs
+        );
+
       return;
     }
 
-    this.swipePoseElapsedMs += deltaMs;
+    if (
+      this.swipePhase ===
+      "draining"
+    ) {
+      this.bounceElapsedMs +=
+        deltaMs;
 
-    if (this.swipePoseElapsedMs >= SWIPE_POSE_DURATION_MS) {
-      this.mode = "loading";
-      this.swipePoseElapsedMs = 0;
+      const totalDrainDuration =
+        this.getDrainTotalDurationMs();
+
+      this.drainElapsedMs =
+        Math.min(
+          totalDrainDuration,
+          this.drainElapsedMs +
+          deltaMs
+        );
+
+      if (
+        this.drainElapsedMs >=
+        totalDrainDuration
+      ) {
+        this.finishDrainAndReturn();
+      }
     }
   }
 
   render() {
-    const rect = this.canvas.getBoundingClientRect();
-    this.ctx.clearRect(0, 0, rect.width, rect.height);
+    const rect =
+      this.canvas.getBoundingClientRect();
 
-    if (!this.ocean.cellW || !this.ocean.cellH || !this.ocean.rows) return;
+    this.ctx.clearRect(
+      0,
+      0,
+      rect.width,
+      rect.height
+    );
 
-    if (this.mode === "swipe") {
-      this.renderArt(IDLE_SWIPE_ART);
+    if (
+      !this.ocean.cellW ||
+      !this.ocean.cellH ||
+      !this.ocean.rows
+    ) {
+      return;
+    }
+
+    if (
+      this.mode === "swipe"
+    ) {
+      this.renderSwipeArt();
       return;
     }
 
     this.renderLoadingArt();
   }
 
-  getArtLayout(lines) {
-    const width = Math.max(...lines.map((line) => Array.from(line).length));
-    const height = lines.length;
-    const scale = this.bucketScale;
-    const scaledWidth = width * scale;
-    const scaledHeight = height * scale;
-    const originX = (this.ocean.cols - scaledWidth) / 2;
-    const centerRow = this.ocean.rows * BUCKET_CENTER_Y;
-    const originY = centerRow - scaledHeight / 2;
+  getArtLayout(
+    lines,
+    includeBounce = true
+  ) {
+    const width =
+      Math.max(
+        ...lines.map(
+          (line) =>
+            Array.from(line).length
+        )
+      );
 
-    return { originX, originY };
+    const height =
+      lines.length;
+
+    const scale =
+      this.bucketScale;
+
+    const scaledWidth =
+      width * scale;
+
+    const scaledHeight =
+      height * scale;
+
+    const originX =
+      (
+        this.ocean.cols -
+        scaledWidth
+      ) / 2;
+
+    const centerRow =
+      this.ocean.rows *
+      BUCKET_CENTER_Y;
+
+    const bounceOffset =
+      includeBounce
+        ? this.getBucketBounceOffsetCells()
+        : 0;
+
+    const originY =
+      centerRow -
+      scaledHeight / 2 +
+      bounceOffset;
+
+    return {
+      originX,
+      originY
+    };
   }
 
-  drawBucketGlyph(glyph, originX, originY, colIndex, rowIndex, color, alpha = 1) {
+  drawBucketGlyph(
+    glyph,
+    originX,
+    originY,
+    colIndex,
+    rowIndex,
+    color,
+    alpha = 1
+  ) {
     this.ocean.drawCellGlyph(
       this.ctx,
       glyph,
-      originX + colIndex * this.bucketScale,
-      originY + rowIndex * this.bucketScale,
+      originX +
+        colIndex *
+        this.bucketScale,
+      originY +
+        rowIndex *
+        this.bucketScale,
       color,
       alpha,
       this.bucketScale,
@@ -472,118 +1028,414 @@ export class BucketLayer {
     );
   }
 
-  renderArt(lines) {
-    const { originX, originY } = this.getArtLayout(lines);
-
-    lines.forEach((line, rowIndex) => {
-      Array.from(line).forEach((glyph, colIndex) => {
-        if (glyph === " ") return;
-
-        this.drawBucketGlyph(
-          glyph,
-          originX,
-          originY,
-          colIndex,
-          rowIndex,
-          BUCKET_COLOR
-        );
-      });
-    });
-  }
-
   renderLoadingArt() {
-    const lines = IDLE_LOADING_ART;
-    const { originX, originY } = this.getArtLayout(lines);
+    const lines =
+      IDLE_LOADING_ART;
 
-    lines.forEach((line, rowIndex) => {
-      const glyphs = Array.from(line);
+    const {
+      originX,
+      originY
+    } =
+      this.getArtLayout(
+        lines
+      );
 
-      glyphs.forEach((glyph, colIndex) => {
-        if (glyph === " ") return;
+    lines.forEach(
+      (
+        line,
+        rowIndex
+      ) => {
+        const glyphs =
+          Array.from(line);
 
-        const isLoadingInterior =
-          LOADING_ROWS.includes(rowIndex) &&
-          colIndex >= LOADING_START_COLUMN &&
-          colIndex < LOADING_START_COLUMN + LOADING_SLOT_COUNT;
+        glyphs.forEach(
+          (
+            glyph,
+            colIndex
+          ) => {
+            if (
+              glyph === " "
+            ) {
+              return;
+            }
 
-        if (isLoadingInterior) return;
+            const isLoadingInterior =
+              LOADING_ROWS.includes(
+                rowIndex
+              ) &&
+              colIndex >=
+                LOADING_START_COLUMN &&
+              colIndex <
+                LOADING_START_COLUMN +
+                LOADING_SLOT_COUNT;
 
-        this.drawBucketGlyph(
-          glyph,
-          originX,
-          originY,
-          colIndex,
-          rowIndex,
-          BUCKET_COLOR
+            if (
+              isLoadingInterior
+            ) {
+              return;
+            }
+
+            this.drawBucketGlyph(
+              glyph,
+              originX,
+              originY,
+              colIndex,
+              rowIndex,
+              BUCKET_COLOR
+            );
+          }
         );
-      });
-    });
+      }
+    );
 
-    this.renderLoadingBars(originX, originY);
+    this.renderLoadingBars(
+      originX,
+      originY
+    );
   }
 
-  renderLoadingBars(originX, originY) {
-    const slotDuration = this.loadingSlotDurationMs;
+  renderSwipeArt() {
+    const lines =
+      IDLE_SWIPE_ART;
 
-    LOADING_ROWS.forEach((rowIndex, loadingOrder) => {
-      const rowStartSlot = loadingOrder * LOADING_SLOT_COUNT;
-      const rowEndMs = (rowStartSlot + LOADING_SLOT_COUNT) * slotDuration;
-      const rowComplete = this.loadingElapsedMs >= rowEndMs;
+    const {
+      originX,
+      originY
+    } =
+      this.getArtLayout(
+        lines
+      );
 
-      for (let slot = 0; slot < LOADING_SLOT_COUNT; slot += 1) {
-        const globalSlotIndex = rowStartSlot + slot;
-        const slotStartMs = globalSlotIndex * slotDuration;
-        const slotProgress = Math.max(
-          0,
-          Math.min(1, (this.loadingElapsedMs - slotStartMs) / slotDuration)
+    lines.forEach(
+      (
+        line,
+        rowIndex
+      ) => {
+        const glyphs =
+          Array.from(line);
+
+        glyphs.forEach(
+          (
+            glyph,
+            colIndex
+          ) => {
+            if (
+              glyph === " "
+            ) {
+              return;
+            }
+
+            const isLoadingInterior =
+              LOADING_ROWS.includes(
+                rowIndex
+              ) &&
+              colIndex >=
+                SWIPE_LOADING_START_COLUMN &&
+              colIndex <
+                SWIPE_LOADING_START_COLUMN +
+                LOADING_SLOT_COUNT;
+
+            if (
+              isLoadingInterior
+            ) {
+              return;
+            }
+
+            this.drawBucketGlyph(
+              glyph,
+              originX,
+              originY,
+              colIndex,
+              rowIndex,
+              BUCKET_COLOR
+            );
+          }
         );
+      }
+    );
 
-        let glyph = EMPTY_BAR_GLYPH;
-        let color = EMPTY_BAR_COLOR;
+    this.renderDrainBars(
+      originX,
+      originY
+    );
+  }
+
+  renderLoadingBars(
+    originX,
+    originY
+  ) {
+    const slotDuration =
+      this.loadingSlotDurationMs;
+
+    LOADING_ROWS.forEach(
+      (
+        rowIndex,
+        loadingOrder
+      ) => {
+        const rowStartSlot =
+          loadingOrder *
+          LOADING_SLOT_COUNT;
+
+        const rowEndMs =
+          (
+            rowStartSlot +
+            LOADING_SLOT_COUNT
+          ) *
+          slotDuration;
+
+        const rowComplete =
+          this.loadingElapsedMs >=
+          rowEndMs;
+
+        for (
+          let slot = 0;
+          slot <
+          LOADING_SLOT_COUNT;
+          slot += 1
+        ) {
+          const globalSlotIndex =
+            rowStartSlot +
+            slot;
+
+          const slotStartMs =
+            globalSlotIndex *
+            slotDuration;
+
+          const slotProgress =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                (
+                  this.loadingElapsedMs -
+                  slotStartMs
+                ) /
+                slotDuration
+              )
+            );
+
+          let glyph =
+            EMPTY_BAR_GLYPH;
+
+          let color =
+            EMPTY_BAR_COLOR;
+
+          let alpha = 0.62;
+
+          if (
+            rowComplete
+          ) {
+            glyph =
+              FILL_BAR_GLYPH;
+
+            color =
+              COMPLETE_BAR_COLOR;
+
+            alpha = 1;
+          } else if (
+            slotProgress >= 1
+          ) {
+            glyph =
+              FILL_BAR_GLYPH;
+
+            color =
+              ACTIVE_BAR_COLOR;
+
+            alpha = 1;
+          } else if (
+            slotProgress > 0
+          ) {
+            const stageIndex =
+              Math.min(
+                ACTIVE_FILL_STAGES.length -
+                  1,
+                Math.floor(
+                  slotProgress *
+                  ACTIVE_FILL_STAGES.length
+                )
+              );
+
+            glyph =
+              ACTIVE_FILL_STAGES[
+                stageIndex
+              ];
+
+            color =
+              ACTIVE_BAR_COLOR;
+
+            alpha = 1;
+          }
+
+          this.drawBucketGlyph(
+            glyph,
+            originX,
+            originY,
+            LOADING_START_COLUMN +
+              slot,
+            rowIndex,
+            color,
+            alpha
+          );
+        }
+      }
+    );
+  }
+
+  renderDrainBars(
+    originX,
+    originY
+  ) {
+    // Performance note:
+    // - always exactly 39 potential bucket slots;
+    // - no setInterval/setTimeout per slot;
+    // - no objects/arrays created per slot or per frame;
+    // - 16x only changes slotDuration, not amount of work.
+    const slotDuration =
+      this.drainSlotDurationMs;
+
+    for (
+      let rowListIndex = 0;
+      rowListIndex <
+      LOADING_ROW_COUNT;
+      rowListIndex += 1
+    ) {
+      const rowIndex =
+        LOADING_ROWS[
+          rowListIndex
+        ];
+
+      let drainRowIndex = -1;
+
+      // At most 3 comparisons. `drainRowOrder` was cached at release.
+      for (
+        let index = 0;
+        index <
+        this.drainRowOrder.length;
+        index += 1
+      ) {
+        if (
+          this.drainRowOrder[index] ===
+          rowIndex
+        ) {
+          drainRowIndex =
+            index;
+          break;
+        }
+      }
+
+      for (
+        let slot = 0;
+        slot <
+        LOADING_SLOT_COUNT;
+        slot += 1
+      ) {
+        let glyph =
+          EMPTY_BAR_GLYPH;
+
+        let color =
+          EMPTY_BAR_COLOR;
+
         let alpha = 0.62;
 
-        if (rowComplete) {
-          glyph = FILL_BAR_GLYPH;
-          color = COMPLETE_BAR_COLOR;
-          alpha = 1;
-        } else if (slotProgress >= 1) {
-          glyph = FILL_BAR_GLYPH;
-          color = ACTIVE_BAR_COLOR;
-          alpha = 1;
-        } else if (slotProgress > 0) {
-          const stageIndex = Math.min(
-            ACTIVE_FILL_STAGES.length - 1,
-            Math.floor(slotProgress * ACTIVE_FILL_STAGES.length)
-          );
-          glyph = ACTIVE_FILL_STAGES[stageIndex];
-          color = ACTIVE_BAR_COLOR;
-          alpha = 1;
+        if (
+          drainRowIndex >= 0
+        ) {
+          // Drain each completed white row from right -> left.
+          const drainSlotIndex =
+            (
+              drainRowIndex *
+              LOADING_SLOT_COUNT
+            ) +
+            (
+              LOADING_SLOT_COUNT -
+              1 -
+              slot
+            );
+
+          const slotStartMs =
+            drainSlotIndex *
+            slotDuration;
+
+          const slotProgress =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                (
+                  this.drainElapsedMs -
+                  slotStartMs
+                ) /
+                slotDuration
+              )
+            );
+
+          if (
+            slotProgress < 1
+          ) {
+            color =
+              COMPLETE_BAR_COLOR;
+
+            alpha = 1;
+
+            if (
+              slotProgress > 0
+            ) {
+              const stageIndex =
+                Math.min(
+                  DRAIN_FILL_STAGES.length -
+                    1,
+                  Math.floor(
+                    slotProgress *
+                    DRAIN_FILL_STAGES.length
+                  )
+                );
+
+              glyph =
+                DRAIN_FILL_STAGES[
+                  stageIndex
+                ];
+            } else {
+              glyph =
+                FILL_BAR_GLYPH;
+            }
+          }
         }
 
         this.drawBucketGlyph(
           glyph,
           originX,
           originY,
-          LOADING_START_COLUMN + slot,
+          SWIPE_LOADING_START_COLUMN +
+            slot,
           rowIndex,
           color,
           alpha
         );
       }
-    });
+    }
   }
 
   loop(now) {
-    const delta = Math.min(120, now - this.lastFrame);
+    const delta =
+      Math.min(
+        120,
+        now -
+        this.lastFrame
+      );
+
     this.lastFrame = now;
 
-    if (!document.hidden) {
+    if (
+      !document.hidden
+    ) {
       this.update(delta);
     }
 
     this.render();
-    this.frameHandle = requestAnimationFrame(this.boundLoop);
+
+    this.frameHandle =
+      requestAnimationFrame(
+        this.boundLoop
+      );
   }
 }
-
-const LOADING_ROW_COUNT = LOADING_ROWS.length;

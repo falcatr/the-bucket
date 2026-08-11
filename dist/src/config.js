@@ -1,15 +1,17 @@
 export const STORAGE_KEYS = {
-  config: "ascii-ocean-mobile-config-v4",
+  config: "ascii-ocean-mobile-config-v5",
   panel: "ascii-ocean-mobile-debug-panel-open"
 };
 
 export const DEFAULT_CONFIG = Object.freeze({
   coralVerticalSpacing: 1,
   coralHorizontalSpacing: 1,
-  coralHeight: 30,
+  coralHeight: 35,
   algaeHeight: 60,
   animationIntensity: 150,
   bucketScale: 1,
+  bucketDrainSpeedMultiplier: 12,
+  bucketBounceCells: 1.6,
   // Cada segmento individual das três barras do balde leva este tempo.
   // Mantido fora do menu de debug por enquanto, mas centralizado aqui para
   // calibração futura.
@@ -49,20 +51,21 @@ export const CONTROL_DEFINITIONS = Object.freeze({
     suffix: "%",
     structural: true
   },
-  animationIntensity: {
-    label: "Intensidade de animação",
-    min: 0,
-    max: 200,
-    step: 5,
-    suffix: "%",
-    structural: false
-  },
-  bucketScale: {
-    label: "Tamanho do balde",
-    min: 0.35,
-    max: 1.2,
-    step: 0.05,
+  bucketDrainSpeedMultiplier: {
+    label: "Velocidade de esvaziamento",
+    min: 0.5,
+    max: 16,
+    step: 0.25,
     suffix: "x",
+    structural: false,
+    affectsOcean: false
+  },
+  bucketBounceCells: {
+    label: "Elasticidade do balde",
+    min: 0,
+    max: 2.5,
+    step: 0.1,
+    suffix: " cel",
     structural: false,
     affectsOcean: false
   }

@@ -1212,7 +1212,11 @@ export class OceanEngine {
       life,
       color: chance(0.78)
         ? PALETTE.paleCyan
-        : choose([PALETTE.cyan, PALETTE.blue, PALETTE.white]),
+        : choose([
+            PALETTE.cyan,
+            PALETTE.blue,
+            PALETTE.paleCyan
+          ]),
       alpha: rand(0.42, 0.90)
     };
   }

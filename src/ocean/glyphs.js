@@ -8,8 +8,7 @@ export const PALETTE = Object.freeze({
   yellow: "#fff35d",
   magenta: "#ff2daf",
   red: "#ff4d65",
-  blue: "#159fff",
-  white: "#d9ffff"
+  blue: "#159fff"
 });
 
 export const BRIGHT_COLORS = [
