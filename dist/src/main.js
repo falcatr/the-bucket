@@ -1,17 +1,40 @@
 import { loadConfig } from "./config.js";
 import { OceanEngine } from "./ocean/OceanEngine.js";
 import { BucketLayer } from "./interaction/BucketLayer.js";
+import { AttentionSystem } from "./game/AttentionSystem.js";
+import { HudLayer } from "./ui/HudLayer.js";
 import { setupDebugPanel } from "./ui/debugPanel.js";
 import { setupFullscreen } from "./ui/fullscreen.js";
 
 const config = loadConfig();
 const oceanCanvas = document.getElementById("ocean");
 const interactionCanvas = document.getElementById("interactionLayer");
+const hudCanvas = document.getElementById("hudLayer");
 
 const engine = new OceanEngine(oceanCanvas, config);
+const hud = new HudLayer(hudCanvas, engine);
+
+const attention = new AttentionSystem(config, {
+  onCellScored: (event) => {
+    hud.addAttention(event);
+  },
+  onScoreChanged: ({ total }) => {
+    hud.setAttention(total);
+  }
+});
+
 const bucket = new BucketLayer(interactionCanvas, engine, {
   onRefresh: () => {
     engine.regenerate(true, false);
+  },
+  onAttentionCellDrained: ({ sourceX, sourceY }) => {
+    attention.scoreDrainedCell({
+      sourceX,
+      sourceY
+    });
+  },
+  onDiscardedSlots: (count) => {
+    attention.registerDiscardedSlots(count);
   }
 });
 
@@ -36,6 +59,7 @@ async function boot() {
     await document.fonts?.ready;
   } finally {
     engine.start();
+    hud.start();
     bucket.start();
   }
 }

@@ -166,6 +166,33 @@ button { -webkit-touch-callout: none; }
   font-variant-numeric: tabular-nums;
 }
 
+
+.debug-number {
+  width: 100%;
+  height: 34px;
+  padding: 4px 8px;
+  color: #fff35d;
+  border: 1px solid rgba(32, 245, 232, 0.72);
+  border-radius: 0;
+  outline: none;
+  background: #082464;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.debug-number:focus {
+  border-color: #fff35d;
+  box-shadow: inset 0 0 0 1px rgba(255, 243, 93, 0.38);
+}
+
+.debug-number::-webkit-outer-spin-button,
+.debug-number::-webkit-inner-spin-button {
+  margin: 0;
+  opacity: 0.65;
+}
+
 .debug-range {
   --fill: 50%;
   width: 100%;
@@ -298,6 +325,18 @@ button { -webkit-touch-callout: none; }
 
 .interaction-canvas:active {
   cursor: grabbing;
+}
+
+
+.hud-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
 }
 
 /*

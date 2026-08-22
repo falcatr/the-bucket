@@ -10,8 +10,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   algaeHeight: 60,
   animationIntensity: 150,
   bucketScale: 1,
+  bucketLoadingRows: 3,
   bucketDrainSpeedMultiplier: 12,
   bucketBounceCells: 1.6,
+  attentionValuePerCell: 1,
   // Cada segmento individual das três barras do balde leva este tempo.
   // Mantido fora do menu de debug por enquanto, mas centralizado aqui para
   // calibração futura.
@@ -51,6 +53,16 @@ export const CONTROL_DEFINITIONS = Object.freeze({
     suffix: "%",
     structural: true
   },
+  bucketLoadingRows: {
+    label: "Tamanho do balde",
+    inputType: "number",
+    min: 1,
+    max: 30,
+    step: 1,
+    suffix: " linhas",
+    structural: false,
+    affectsOcean: false
+  },
   bucketDrainSpeedMultiplier: {
     label: "Velocidade de esvaziamento",
     min: 0.5,
@@ -68,7 +80,17 @@ export const CONTROL_DEFINITIONS = Object.freeze({
     suffix: " cel",
     structural: false,
     affectsOcean: false
-  }
+  },
+  attentionValuePerCell: {
+    label: "Attention por célula",
+    inputType: "number",
+    min: 1,
+    max: 9999,
+    step: 1,
+    suffix: " pts",
+    structural: false,
+    affectsOcean: false
+  },
 });
 
 export function loadConfig() {

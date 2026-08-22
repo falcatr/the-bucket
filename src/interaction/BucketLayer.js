@@ -8,71 +8,231 @@ const FILL_BAR_GLYPH = "█";
 const ACTIVE_FILL_STAGES = ["░", "▒", "▓", "█"];
 const DRAIN_FILL_STAGES = ["█", "▓", "▒", "░"];
 
+const DISCARD_GLYPH = "X";
+const DISCARD_COLOR = "#fff35d";
+const DISCARD_MARK_DURATION_MS = 240;
+
+const DOUBLE_TAP_MAX_INTERVAL_MS = 320;
+const DOUBLE_TAP_MAX_DURATION_MS = 260;
+const DOUBLE_TAP_MAX_MOVE_PX = 18;
+const DOUBLE_TAP_MAX_DISTANCE_PX = 42;
+
 const BUCKET_CENTER_Y = 0.39;
 
-// `IDLE_LOADING_ART[1]` is the upper rim:
+// `IDLE_LOADING` row 1 is always the upper rim:
 // "  ,--[___]--,"
-// Refresh only becomes valid after this complete row is visually above
-// the animated waterline. This is resolution-independent.
+// The generated bucket grows DOWNWARD for capacities > 3, so this reference
+// stays at the same screen position regardless of bucket capacity.
 const REFRESH_BUCKET_REFERENCE_ROW = 1;
 const REFRESH_CLEARANCE_CELLS = 0.08;
 
 const MAX_PULL_VIEWPORT_RATIO = 0.50;
-
-// After a valid release, keep approximately this much of the hidden
-// upper-water region visible while the fake refresh/drain runs.
 const SWIPE_HOLD_VIEWPORT_RATIO = 0.20;
 
 const RELEASE_TO_HOLD_DURATION_MS = 360;
 const RETURN_TO_OCEAN_DURATION_MS = 420;
 
-// Damped bucket bounce after release. Amplitude comes from debug config.
 const BOUNCE_PERIOD_MS = 560;
 const BOUNCE_DECAY_MS = 1250;
 
-// Arte baseada no arquivo balde_ascii.txt enviado como referência.
-const IDLE_LOADING_ART = [
+const MIN_BUCKET_BODY_ROWS = 3;
+const MAX_BUCKET_LOADING_ROWS = 30;
+const LOADING_SLOT_COUNT = 13;
+
+const LOADING_START_COLUMN = 1;
+const SWIPE_LOADING_START_COLUMN = 2;
+
+// Static pieces of the original ASCII. Only the internal body is generated.
+const IDLE_LOADING_TOP_ART = [
   "      ___",
   "  ,--[___]--,",
   " /           \\",
   "|,.--'```'--.,|",
   "|'-.,_____,.-'|",
-  "|'-.,_____,.-'|",
-  "|   LOADING   |",
-  "|   LOADING   |",
-  "|   LOADING   |",
+  "|'-.,_____,.-'|"
+];
+
+const IDLE_LOADING_BODY_LINE =
+  "|             |";
+
+const IDLE_LOADING_BOTTOM_ART = [
   "|'-.,_____,.-'|",
   "`'-.,_____,.-''"
 ];
 
-const IDLE_SWIPE_ART = [
+const IDLE_SWIPE_TOP_ART = [
   " ,.--'`````'--.,",
   "(\\'-.,_____,.-'/)",
   " \\\\-.,_____,.-//",
   " ;\\\\         //|",
   " | \\\\  ___  // |",
-  " |  '-[___]-'  |",
-  " |             |",
-  " |             |",
-  " |             |",
+  " |  '-[___]-'  |"
+];
+
+const IDLE_SWIPE_BODY_LINE =
+  " |             |";
+
+const IDLE_SWIPE_BOTTOM_ART = [
   " `'-.,_____,.-''"
 ];
 
-// Loading fills bottom -> middle -> top.
-const LOADING_ROWS = [8, 7, 6];
-const LOADING_START_COLUMN = 1;
+const BASE_LOADING_ART_HEIGHT =
+  IDLE_LOADING_TOP_ART.length +
+  MIN_BUCKET_BODY_ROWS +
+  IDLE_LOADING_BOTTOM_ART.length;
 
-// IDLE-SWIPE has one extra leading space, so its 13-cell interior starts at 2.
-const SWIPE_LOADING_START_COLUMN = 2;
-const LOADING_SLOT_COUNT = 13;
-const LOADING_ROW_COUNT = LOADING_ROWS.length;
+const BASE_SWIPE_ART_HEIGHT =
+  IDLE_SWIPE_TOP_ART.length +
+  MIN_BUCKET_BODY_ROWS +
+  IDLE_SWIPE_BOTTOM_ART.length;
+
+// Generated once per mode/capacity and reused every frame.
+const BUCKET_ART_CACHE =
+  new Map();
+
+function normalizeBucketLoadingRows(
+  value
+) {
+  const numeric =
+    Number(value);
+
+  return Math.max(
+    1,
+    Math.min(
+      MAX_BUCKET_LOADING_ROWS,
+      Math.round(
+        Number.isFinite(numeric)
+          ? numeric
+          : 3
+      )
+    )
+  );
+}
+
+function getBucketArt(
+  mode,
+  requestedCapacityRows
+) {
+  const capacityRows =
+    normalizeBucketLoadingRows(
+      requestedCapacityRows
+    );
+
+  const cacheKey =
+    `${mode}:${capacityRows}`;
+
+  const cached =
+    BUCKET_ART_CACHE.get(
+      cacheKey
+    );
+
+  if (cached) {
+    return cached;
+  }
+
+  const isSwipe =
+    mode === "swipe";
+
+  const topLines =
+    isSwipe
+      ? IDLE_SWIPE_TOP_ART
+      : IDLE_LOADING_TOP_ART;
+
+  const bottomLines =
+    isSwipe
+      ? IDLE_SWIPE_BOTTOM_ART
+      : IDLE_LOADING_BOTTOM_ART;
+
+  const bodyLine =
+    isSwipe
+      ? IDLE_SWIPE_BODY_LINE
+      : IDLE_LOADING_BODY_LINE;
+
+  // For capacities 1–3, silhouette stays identical to the original bucket.
+  // For capacities >3, every extra capacity row adds one physical body row.
+  const bodyRowCount =
+    Math.max(
+      MIN_BUCKET_BODY_ROWS,
+      capacityRows
+    );
+
+  const bodyLines =
+    Array.from(
+      {
+        length:
+          bodyRowCount
+      },
+      () => bodyLine
+    );
+
+  const lines = [
+    ...topLines,
+    ...bodyLines,
+    ...bottomLines
+  ];
+
+  const bodyStartRow =
+    topLines.length;
+
+  // Loading order is always bottom -> top.
+  // If capacity is 1 or 2, the remaining body rows are simply blank.
+  const loadingRows = [];
+
+  for (
+    let index = 0;
+    index < capacityRows;
+    index += 1
+  ) {
+    loadingRows.push(
+      bodyStartRow +
+      bodyRowCount -
+      1 -
+      index
+    );
+  }
+
+  const width =
+    Math.max(
+      ...lines.map(
+        (line) =>
+          Array.from(line).length
+      )
+    );
+
+  const art = {
+    mode,
+    capacityRows,
+    lines,
+    loadingRows,
+    loadingStartColumn:
+      isSwipe
+        ? SWIPE_LOADING_START_COLUMN
+        : LOADING_START_COLUMN,
+    width,
+    height:
+      lines.length,
+    baseHeight:
+      isSwipe
+        ? BASE_SWIPE_ART_HEIGHT
+        : BASE_LOADING_ART_HEIGHT
+  };
+
+  BUCKET_ART_CACHE.set(
+    cacheKey,
+    art
+  );
+
+  return art;
+}
 
 export class BucketLayer {
   constructor(
     canvas,
     oceanEngine,
     {
-      onRefresh
+      onRefresh,
+      onAttentionCellDrained,
+      onDiscardedSlots
     } = {}
   ) {
     this.canvas = canvas;
@@ -82,6 +242,12 @@ export class BucketLayer {
       oceanEngine;
     this.onRefresh =
       onRefresh;
+
+    this.onAttentionCellDrained =
+      onAttentionCellDrained;
+
+    this.onDiscardedSlots =
+      onDiscardedSlots;
 
     // loading | swipe
     this.mode = "loading";
@@ -93,8 +259,32 @@ export class BucketLayer {
 
     this.drainElapsedMs = 0;
     this.drainCompletedRows = 0;
+    this.drainBucketCapacityRows = 0;
     this.drainRowOrder = [];
+    this.drainRowIndexByRow =
+      new Int16Array(0);
+    this.creditedDrainSlots = 0;
     this.drainFinished = false;
+
+    // Double-tap discard state. `lastDiscardedSlotCount` intentionally
+    // survives the return to IDLE-LOADING so the next accounting mechanic
+    // can consume this information without changing the gesture again.
+    this.discardElapsedMs = 0;
+    this.discardSlotMask =
+      new Uint8Array(0);
+    this.discardedSlotCount = 0;
+    this.lastDiscardedSlotCount = 0;
+
+    this.swipeTap = {
+      active: false,
+      id: null,
+      startX: 0,
+      startY: 0,
+      startAt: 0,
+      lastTapAt: -Infinity,
+      lastTapX: 0,
+      lastTapY: 0
+    };
 
     this.bounceElapsedMs = 0;
 
@@ -104,8 +294,6 @@ export class BucketLayer {
     this.resizeObserver = null;
 
     this.oceanOffsetY = 0;
-
-    // Generic visual translation animation for the same tall ocean canvas.
     this.offsetAnimation = null;
 
     this.pointer = {
@@ -271,6 +459,13 @@ export class BucketLayer {
     );
   }
 
+  get bucketLoadingRows() {
+    return normalizeBucketLoadingRows(
+      this.ocean.config
+        .bucketLoadingRows
+    );
+  }
+
   get drainSpeedMultiplier() {
     const configured =
       Number(
@@ -278,13 +473,17 @@ export class BucketLayer {
           .bucketDrainSpeedMultiplier
       );
 
+    // Roadmap 0.3.x:
+    // this fixed value will later be resolved from the number of completed
+    // rows captured at release. Keeping this behind one getter means that
+    // change will not require rewriting the drain renderer.
     return Math.max(
       0.25,
       Math.min(
         16,
         Number.isFinite(configured)
           ? configured
-          : 2
+          : 12
       )
     );
   }
@@ -309,7 +508,7 @@ export class BucketLayer {
         4,
         Number.isFinite(configured)
           ? configured
-          : 0.9
+          : 1.6
       )
     );
   }
@@ -355,10 +554,16 @@ export class BucketLayer {
   }
 
   getBucketRefreshReferenceY() {
+    const art =
+      getBucketArt(
+        "loading",
+        this.bucketLoadingRows
+      );
+
     const {
       originY
     } = this.getArtLayout(
-      IDLE_LOADING_ART,
+      art,
       false
     );
 
@@ -397,6 +602,18 @@ export class BucketLayer {
     );
   }
 
+  isBucketOutOfWater(
+    visualOceanOffset =
+      this.oceanOffsetY
+  ) {
+    // Single source of truth:
+    // the exact geometry that arms IDLE-SWIPE also determines whether the
+    // IDLE-LOADING bars are allowed to keep filling.
+    return this.isRefreshGeometrySatisfied(
+      visualOceanOffset
+    );
+  }
+
   getSwipeHoldOffset() {
     const viewportHeight =
       this.canvas
@@ -419,7 +636,7 @@ export class BucketLayer {
     return Math.max(
       0,
       Math.min(
-        LOADING_ROW_COUNT,
+        this.bucketLoadingRows,
         Math.floor(
           this.loadingElapsedMs /
           rowDuration
@@ -439,7 +656,10 @@ export class BucketLayer {
   getBucketBounceOffsetCells() {
     if (
       this.mode !== "swipe" ||
-      this.swipePhase !== "draining" ||
+      (
+        this.swipePhase !== "draining" &&
+        this.swipePhase !== "discarding"
+      ) ||
       this.bucketBounceCells <= 0
     ) {
       return 0;
@@ -463,8 +683,6 @@ export class BucketLayer {
         BOUNCE_PERIOD_MS
       );
 
-    // Positive row offset moves the bucket downward first, then upward,
-    // producing the requested elastic "dip back toward the sea".
     return (
       this.bucketBounceCells *
       decay *
@@ -482,23 +700,55 @@ export class BucketLayer {
       return false;
     }
 
-    // Only fully-white rows enter IDLE-SWIPE. Any yellow/incomplete row
-    // disappears at release.
+    this.drainBucketCapacityRows =
+      this.bucketLoadingRows;
+
     this.drainCompletedRows =
       Math.min(
-        LOADING_ROW_COUNT,
+        this.drainBucketCapacityRows,
         completedRows
       );
 
-    // Cache the small row order once. Drain rendering stays allocation-free
-    // even at 16x; speed only changes time-to-state, never update frequency.
+    const swipeArt =
+      getBucketArt(
+        "swipe",
+        this.drainBucketCapacityRows
+      );
+
+    // Completed rows are bottom-first. Drain highest completed row first.
     this.drainRowOrder =
-      LOADING_ROWS
+      swipeArt.loadingRows
         .slice(
           0,
           this.drainCompletedRows
         )
         .reverse();
+
+    this.drainRowIndexByRow =
+      new Int16Array(
+        swipeArt.height
+      );
+
+    this.drainRowIndexByRow.fill(
+      -1
+    );
+
+    for (
+      let index = 0;
+      index <
+      this.drainRowOrder.length;
+      index += 1
+    ) {
+      this.drainRowIndexByRow[
+        this.drainRowOrder[index]
+      ] = index;
+    }
+
+    this.discardElapsedMs = 0;
+    this.discardSlotMask =
+      new Uint8Array(0);
+    this.discardedSlotCount = 0;
+    this.creditedDrainSlots = 0;
 
     this.loadingElapsedMs = 0;
     this.drainElapsedMs = 0;
@@ -509,8 +759,7 @@ export class BucketLayer {
     this.swipePhase =
       "draining";
 
-    // The content refresh belongs to the RELEASE, not to the end of the fake
-    // loading. The new sea is immediately present behind IDLE-SWIPE.
+    // New sea appears on release.
     this.onRefresh?.();
 
     this.startOffsetAnimation(
@@ -532,9 +781,6 @@ export class BucketLayer {
     this.swipePhase =
       "returning";
 
-    // The sea was already regenerated at release. Once the fake drain
-    // finishes, only the visual return to the underwater resting position
-    // remains.
     this.startOffsetAnimation(
       0,
       RETURN_TO_OCEAN_DURATION_MS,
@@ -543,18 +789,521 @@ export class BucketLayer {
         this.swipePhase = null;
         this.drainElapsedMs = 0;
         this.drainCompletedRows = 0;
+        this.drainBucketCapacityRows = 0;
         this.drainRowOrder = [];
+        this.drainRowIndexByRow =
+          new Int16Array(0);
+        this.creditedDrainSlots = 0;
         this.drainFinished = false;
+        this.discardElapsedMs = 0;
+        this.discardSlotMask =
+          new Uint8Array(0);
+        this.discardedSlotCount = 0;
+        this.resetSwipeTapState(
+          true
+        );
         this.bounceElapsedMs = 0;
         this.loadingElapsedMs = 0;
       }
     );
   }
 
+  getDrainSlotProgress(
+    rowIndex,
+    slot
+  ) {
+    if (
+      rowIndex < 0 ||
+      rowIndex >=
+        this.drainRowIndexByRow.length
+    ) {
+      return 1;
+    }
+
+    const drainRowIndex =
+      this.drainRowIndexByRow[
+        rowIndex
+      ];
+
+    if (
+      drainRowIndex < 0
+    ) {
+      return 1;
+    }
+
+    const drainSlotIndex =
+      (
+        drainRowIndex *
+        LOADING_SLOT_COUNT
+      ) +
+      (
+        LOADING_SLOT_COUNT -
+        1 -
+        slot
+      );
+
+    const slotStartMs =
+      drainSlotIndex *
+      this.drainSlotDurationMs;
+
+    return Math.max(
+      0,
+      Math.min(
+        1,
+        (
+          this.drainElapsedMs -
+          slotStartMs
+        ) /
+        this.drainSlotDurationMs
+      )
+    );
+  }
+
+  getDrainSlotScreenPosition(
+    drainSlotIndex
+  ) {
+    const capacityRows =
+      this.drainBucketCapacityRows ||
+      this.bucketLoadingRows;
+
+    const art =
+      getBucketArt(
+        "swipe",
+        capacityRows
+      );
+
+    const drainRowIndex =
+      Math.floor(
+        drainSlotIndex /
+        LOADING_SLOT_COUNT
+      );
+
+    const withinRowIndex =
+      drainSlotIndex %
+      LOADING_SLOT_COUNT;
+
+    const rowIndex =
+      this.drainRowOrder[
+        drainRowIndex
+      ];
+
+    if (
+      rowIndex === undefined
+    ) {
+      return null;
+    }
+
+    // Drain order inside each row is right -> left.
+    const slot =
+      LOADING_SLOT_COUNT -
+      1 -
+      withinRowIndex;
+
+    const {
+      originX,
+      originY
+    } =
+      this.getArtLayout(
+        art
+      );
+
+    const logicalX =
+      originX +
+      (
+        art.loadingStartColumn +
+        slot
+      ) *
+      this.bucketScale;
+
+    const logicalY =
+      originY +
+      rowIndex *
+      this.bucketScale;
+
+    return {
+      x:
+        logicalX *
+        this.ocean.cellW +
+        this.ocean.cellW *
+        0.5,
+      y:
+        logicalY *
+        this.ocean.cellH +
+        this.ocean.cellH *
+        0.5
+    };
+  }
+
+  creditNewlyDrainedSlots() {
+    if (
+      !this.onAttentionCellDrained
+    ) {
+      return;
+    }
+
+    const totalSlots =
+      this.drainCompletedRows *
+      LOADING_SLOT_COUNT;
+
+    if (
+      totalSlots <= 0
+    ) {
+      return;
+    }
+
+    const completedNow =
+      Math.min(
+        totalSlots,
+        Math.floor(
+          (
+            this.drainElapsedMs +
+            0.0001
+          ) /
+          this.drainSlotDurationMs
+        )
+      );
+
+    while (
+      this.creditedDrainSlots <
+      completedNow
+    ) {
+      const drainSlotIndex =
+        this.creditedDrainSlots;
+
+      const source =
+        this.getDrainSlotScreenPosition(
+          drainSlotIndex
+        );
+
+      if (
+        source
+      ) {
+        this.onAttentionCellDrained(
+          {
+            sourceX:
+              source.x,
+            sourceY:
+              source.y,
+            drainSlotIndex
+          }
+        );
+      }
+
+      this.creditedDrainSlots +=
+        1;
+    }
+  }
+
+  captureRemainingDiscardSlots() {
+    const capacityRows =
+      this.drainBucketCapacityRows ||
+      this.bucketLoadingRows;
+
+    const art =
+      getBucketArt(
+        "swipe",
+        capacityRows
+      );
+
+    const mask =
+      new Uint8Array(
+        art.loadingRows.length *
+        LOADING_SLOT_COUNT
+      );
+
+    let remainingCount = 0;
+
+    for (
+      let rowListIndex = 0;
+      rowListIndex <
+      art.loadingRows.length;
+      rowListIndex += 1
+    ) {
+      const rowIndex =
+        art.loadingRows[
+          rowListIndex
+        ];
+
+      for (
+        let slot = 0;
+        slot <
+        LOADING_SLOT_COUNT;
+        slot += 1
+      ) {
+        if (
+          this.getDrainSlotProgress(
+            rowIndex,
+            slot
+          ) >= 1
+        ) {
+          continue;
+        }
+
+        mask[
+          rowListIndex *
+          LOADING_SLOT_COUNT +
+          slot
+        ] = 1;
+
+        remainingCount += 1;
+      }
+    }
+
+    this.discardSlotMask =
+      mask;
+
+    this.discardedSlotCount =
+      remainingCount;
+
+    this.lastDiscardedSlotCount =
+      remainingCount;
+
+    this.onDiscardedSlots?.(
+      remainingCount
+    );
+
+    return remainingCount;
+  }
+
+  triggerDiscard() {
+    if (
+      this.mode !== "swipe" ||
+      this.swipePhase !== "draining"
+    ) {
+      return false;
+    }
+
+    const remainingCount =
+      this.captureRemainingDiscardSlots();
+
+    if (
+      remainingCount <= 0
+    ) {
+      this.finishDrainAndReturn();
+      return false;
+    }
+
+    // Freeze normal drain progression. All still-existing slots are now
+    // represented by a visible yellow X until the short discard cue ends.
+    this.swipePhase =
+      "discarding";
+
+    this.discardElapsedMs = 0;
+
+    this.resetSwipeTapState(
+      true
+    );
+
+    return true;
+  }
+
+  finishDiscardAndReturn() {
+    if (
+      this.mode !== "swipe" ||
+      this.swipePhase !== "discarding"
+    ) {
+      return;
+    }
+
+    // Everything represented by the yellow Xs is now considered discarded.
+    // Mark drain time as fully complete so the returning pose renders empty.
+    this.drainElapsedMs =
+      this.getDrainTotalDurationMs();
+
+    this.discardElapsedMs =
+      DISCARD_MARK_DURATION_MS;
+
+    this.discardSlotMask =
+      new Uint8Array(0);
+
+    this.discardedSlotCount = 0;
+
+    this.finishDrainAndReturn();
+  }
+
+  resetSwipeTapState(
+    clearPreviousTap = false
+  ) {
+    this.swipeTap.active = false;
+    this.swipeTap.id = null;
+    this.swipeTap.startX = 0;
+    this.swipeTap.startY = 0;
+    this.swipeTap.startAt = 0;
+
+    if (
+      clearPreviousTap
+    ) {
+      this.swipeTap.lastTapAt =
+        -Infinity;
+
+      this.swipeTap.lastTapX = 0;
+      this.swipeTap.lastTapY = 0;
+    }
+  }
+
+  beginSwipeTap(event) {
+    if (
+      this.mode !== "swipe" ||
+      this.swipePhase !== "draining"
+    ) {
+      return;
+    }
+
+    this.swipeTap.active = true;
+    this.swipeTap.id =
+      event.pointerId;
+    this.swipeTap.startX =
+      event.clientX;
+    this.swipeTap.startY =
+      event.clientY;
+    this.swipeTap.startAt =
+      performance.now();
+
+    try {
+      this.canvas.setPointerCapture(
+        event.pointerId
+      );
+    } catch {
+      // No-op.
+    }
+  }
+
+  updateSwipeTap(event) {
+    if (
+      !this.swipeTap.active ||
+      event.pointerId !==
+        this.swipeTap.id
+    ) {
+      return false;
+    }
+
+    const deltaX =
+      event.clientX -
+      this.swipeTap.startX;
+
+    const deltaY =
+      event.clientY -
+      this.swipeTap.startY;
+
+    if (
+      Math.hypot(
+        deltaX,
+        deltaY
+      ) >
+      DOUBLE_TAP_MAX_MOVE_PX
+    ) {
+      this.resetSwipeTapState(
+        false
+      );
+    }
+
+    return true;
+  }
+
+  finishSwipeTap(event) {
+    if (
+      !this.swipeTap.active ||
+      event.pointerId !==
+        this.swipeTap.id
+    ) {
+      return false;
+    }
+
+    const now =
+      performance.now();
+
+    const duration =
+      now -
+      this.swipeTap.startAt;
+
+    const deltaX =
+      event.clientX -
+      this.swipeTap.startX;
+
+    const deltaY =
+      event.clientY -
+      this.swipeTap.startY;
+
+    const movement =
+      Math.hypot(
+        deltaX,
+        deltaY
+      );
+
+    try {
+      if (
+        this.canvas.hasPointerCapture(
+          event.pointerId
+        )
+      ) {
+        this.canvas.releasePointerCapture(
+          event.pointerId
+        );
+      }
+    } catch {
+      // No-op.
+    }
+
+    const isTap =
+      duration <=
+        DOUBLE_TAP_MAX_DURATION_MS &&
+      movement <=
+        DOUBLE_TAP_MAX_MOVE_PX;
+
+    this.swipeTap.active = false;
+    this.swipeTap.id = null;
+
+    if (
+      !isTap
+    ) {
+      this.swipeTap.lastTapAt =
+        -Infinity;
+
+      return true;
+    }
+
+    const distanceFromPreviousTap =
+      Math.hypot(
+        event.clientX -
+          this.swipeTap.lastTapX,
+        event.clientY -
+          this.swipeTap.lastTapY
+      );
+
+    const isDoubleTap =
+      now -
+        this.swipeTap.lastTapAt <=
+        DOUBLE_TAP_MAX_INTERVAL_MS &&
+      distanceFromPreviousTap <=
+        DOUBLE_TAP_MAX_DISTANCE_PX;
+
+    if (
+      isDoubleTap
+    ) {
+      this.swipeTap.lastTapAt =
+        -Infinity;
+
+      this.triggerDiscard();
+      return true;
+    }
+
+    this.swipeTap.lastTapAt =
+      now;
+    this.swipeTap.lastTapX =
+      event.clientX;
+    this.swipeTap.lastTapY =
+      event.clientY;
+
+    return true;
+  }
+
   handlePointerDown(event) {
     if (
       this.mode === "swipe"
     ) {
+      this.beginSwipeTap(
+        event
+      );
       return;
     }
 
@@ -589,6 +1338,16 @@ export class BucketLayer {
   }
 
   handlePointerMove(event) {
+    if (
+      this.mode === "swipe" &&
+      this.swipeTap.active
+    ) {
+      this.updateSwipeTap(
+        event
+      );
+      return;
+    }
+
     if (
       !this.pointer.active ||
       event.pointerId !==
@@ -642,6 +1401,16 @@ export class BucketLayer {
   }
 
   handlePointerUp(event) {
+    if (
+      this.mode === "swipe" &&
+      this.swipeTap.active
+    ) {
+      this.finishSwipeTap(
+        event
+      );
+      return;
+    }
+
     if (
       !this.pointer.active ||
       event.pointerId !==
@@ -710,6 +1479,18 @@ export class BucketLayer {
   }
 
   handlePointerCancel(event) {
+    if (
+      this.mode === "swipe" &&
+      this.swipeTap.active &&
+      event.pointerId ===
+        this.swipeTap.id
+    ) {
+      this.resetSwipeTapState(
+        true
+      );
+      return;
+    }
+
     if (
       !this.pointer.active ||
       event.pointerId !==
@@ -838,8 +1619,6 @@ export class BucketLayer {
         animation.duration
       );
 
-    // easeOutCubic: quick response immediately after release,
-    // then a softer arrival at 20% / zero.
     const eased =
       1 -
       Math.pow(
@@ -880,8 +1659,23 @@ export class BucketLayer {
     if (
       this.mode === "loading"
     ) {
+      // Loading only progresses while the bucket rim is submerged.
+      //
+      // This check is based on the CURRENT visual ocean offset, not on
+      // pointer state. Therefore it also behaves correctly when:
+      //
+      // 1. the user pulls the bucket out of the water -> loading freezes;
+      // 2. without releasing, drags back below the surface -> loading resumes;
+      // 3. an invalid release returns the ocean from above the surface ->
+      //    loading stays frozen during the return until the rim is submerged.
+      if (
+        this.isBucketOutOfWater()
+      ) {
+        return;
+      }
+
       const totalSlots =
-        LOADING_ROW_COUNT *
+        this.bucketLoadingRows *
         LOADING_SLOT_COUNT;
 
       const totalDuration =
@@ -915,11 +1709,40 @@ export class BucketLayer {
           deltaMs
         );
 
+      // A white cell earns Attention exactly once, at the moment its drain
+      // progress reaches the empty state. A double-tap never reaches this
+      // path for the slots it discards.
+      this.creditNewlyDrainedSlots();
+
       if (
         this.drainElapsedMs >=
         totalDrainDuration
       ) {
         this.finishDrainAndReturn();
+      }
+
+      return;
+    }
+
+    if (
+      this.swipePhase ===
+      "discarding"
+    ) {
+      this.bounceElapsedMs +=
+        deltaMs;
+
+      this.discardElapsedMs =
+        Math.min(
+          DISCARD_MARK_DURATION_MS,
+          this.discardElapsedMs +
+          deltaMs
+        );
+
+      if (
+        this.discardElapsedMs >=
+        DISCARD_MARK_DURATION_MS
+      ) {
+        this.finishDiscardAndReturn();
       }
     }
   }
@@ -954,28 +1777,22 @@ export class BucketLayer {
   }
 
   getArtLayout(
-    lines,
+    art,
     includeBounce = true
   ) {
-    const width =
-      Math.max(
-        ...lines.map(
-          (line) =>
-            Array.from(line).length
-        )
-      );
-
-    const height =
-      lines.length;
-
     const scale =
       this.bucketScale;
 
     const scaledWidth =
-      width * scale;
+      art.width *
+      scale;
 
-    const scaledHeight =
-      height * scale;
+    // Important: extra capacity grows DOWNWARD. We position the top using
+    // the original 3-row silhouette height instead of recentering the taller
+    // generated art.
+    const baseScaledHeight =
+      art.baseHeight *
+      scale;
 
     const originX =
       (
@@ -994,7 +1811,7 @@ export class BucketLayer {
 
     const originY =
       centerRow -
-      scaledHeight / 2 +
+      baseScaledHeight / 2 +
       bounceOffset;
 
     return {
@@ -1029,90 +1846,94 @@ export class BucketLayer {
   }
 
   renderLoadingArt() {
-    const lines =
-      IDLE_LOADING_ART;
+    const art =
+      getBucketArt(
+        "loading",
+        this.bucketLoadingRows
+      );
 
     const {
       originX,
       originY
     } =
       this.getArtLayout(
-        lines
+        art
       );
 
-    lines.forEach(
-      (
-        line,
-        rowIndex
-      ) => {
-        const glyphs =
-          Array.from(line);
-
-        glyphs.forEach(
-          (
-            glyph,
-            colIndex
-          ) => {
-            if (
-              glyph === " "
-            ) {
-              return;
-            }
-
-            const isLoadingInterior =
-              LOADING_ROWS.includes(
-                rowIndex
-              ) &&
-              colIndex >=
-                LOADING_START_COLUMN &&
-              colIndex <
-                LOADING_START_COLUMN +
-                LOADING_SLOT_COUNT;
-
-            if (
-              isLoadingInterior
-            ) {
-              return;
-            }
-
-            this.drawBucketGlyph(
-              glyph,
-              originX,
-              originY,
-              colIndex,
-              rowIndex,
-              BUCKET_COLOR
-            );
-          }
-        );
-      }
+    this.renderBucketStructure(
+      art,
+      originX,
+      originY
     );
 
     this.renderLoadingBars(
+      art,
       originX,
       originY
     );
   }
 
   renderSwipeArt() {
-    const lines =
-      IDLE_SWIPE_ART;
+    const capacityRows =
+      this.drainBucketCapacityRows ||
+      this.bucketLoadingRows;
+
+    const art =
+      getBucketArt(
+        "swipe",
+        capacityRows
+      );
 
     const {
       originX,
       originY
     } =
       this.getArtLayout(
-        lines
+        art
       );
 
-    lines.forEach(
+    this.renderBucketStructure(
+      art,
+      originX,
+      originY
+    );
+
+    if (
+      this.swipePhase ===
+      "discarding"
+    ) {
+      this.renderDiscardBars(
+        art,
+        originX,
+        originY
+      );
+      return;
+    }
+
+    this.renderDrainBars(
+      art,
+      originX,
+      originY
+    );
+  }
+
+  renderBucketStructure(
+    art,
+    originX,
+    originY
+  ) {
+    art.lines.forEach(
       (
         line,
         rowIndex
       ) => {
         const glyphs =
           Array.from(line);
+
+        const isLoadingRow =
+          art.loadingRows.includes(
+            rowIndex
+          );
 
         glyphs.forEach(
           (
@@ -1126,13 +1947,11 @@ export class BucketLayer {
             }
 
             const isLoadingInterior =
-              LOADING_ROWS.includes(
-                rowIndex
-              ) &&
+              isLoadingRow &&
               colIndex >=
-                SWIPE_LOADING_START_COLUMN &&
+                art.loadingStartColumn &&
               colIndex <
-                SWIPE_LOADING_START_COLUMN +
+                art.loadingStartColumn +
                 LOADING_SLOT_COUNT;
 
             if (
@@ -1153,175 +1972,213 @@ export class BucketLayer {
         );
       }
     );
-
-    this.renderDrainBars(
-      originX,
-      originY
-    );
   }
 
   renderLoadingBars(
+    art,
     originX,
     originY
   ) {
     const slotDuration =
       this.loadingSlotDurationMs;
 
-    LOADING_ROWS.forEach(
-      (
-        rowIndex,
-        loadingOrder
-      ) => {
-        const rowStartSlot =
-          loadingOrder *
-          LOADING_SLOT_COUNT;
+    for (
+      let loadingOrder = 0;
+      loadingOrder <
+      art.loadingRows.length;
+      loadingOrder += 1
+    ) {
+      const rowIndex =
+        art.loadingRows[
+          loadingOrder
+        ];
 
-        const rowEndMs =
-          (
-            rowStartSlot +
-            LOADING_SLOT_COUNT
-          ) *
+      const rowStartSlot =
+        loadingOrder *
+        LOADING_SLOT_COUNT;
+
+      const rowEndMs =
+        (
+          rowStartSlot +
+          LOADING_SLOT_COUNT
+        ) *
+        slotDuration;
+
+      const rowComplete =
+        this.loadingElapsedMs >=
+        rowEndMs;
+
+      for (
+        let slot = 0;
+        slot <
+        LOADING_SLOT_COUNT;
+        slot += 1
+      ) {
+        const globalSlotIndex =
+          rowStartSlot +
+          slot;
+
+        const slotStartMs =
+          globalSlotIndex *
           slotDuration;
 
-        const rowComplete =
-          this.loadingElapsedMs >=
-          rowEndMs;
+        const slotProgress =
+          Math.max(
+            0,
+            Math.min(
+              1,
+              (
+                this.loadingElapsedMs -
+                slotStartMs
+              ) /
+              slotDuration
+            )
+          );
 
-        for (
-          let slot = 0;
-          slot <
-          LOADING_SLOT_COUNT;
-          slot += 1
+        let glyph =
+          EMPTY_BAR_GLYPH;
+
+        let color =
+          EMPTY_BAR_COLOR;
+
+        let alpha = 0.62;
+
+        if (
+          rowComplete
         ) {
-          const globalSlotIndex =
-            rowStartSlot +
-            slot;
+          glyph =
+            FILL_BAR_GLYPH;
 
-          const slotStartMs =
-            globalSlotIndex *
-            slotDuration;
+          color =
+            COMPLETE_BAR_COLOR;
 
-          const slotProgress =
-            Math.max(
-              0,
-              Math.min(
+          alpha = 1;
+        } else if (
+          slotProgress >= 1
+        ) {
+          glyph =
+            FILL_BAR_GLYPH;
+
+          color =
+            ACTIVE_BAR_COLOR;
+
+          alpha = 1;
+        } else if (
+          slotProgress > 0
+        ) {
+          const stageIndex =
+            Math.min(
+              ACTIVE_FILL_STAGES.length -
                 1,
-                (
-                  this.loadingElapsedMs -
-                  slotStartMs
-                ) /
-                slotDuration
+              Math.floor(
+                slotProgress *
+                ACTIVE_FILL_STAGES.length
               )
             );
 
-          let glyph =
-            EMPTY_BAR_GLYPH;
+          glyph =
+            ACTIVE_FILL_STAGES[
+              stageIndex
+            ];
 
-          let color =
-            EMPTY_BAR_COLOR;
+          color =
+            ACTIVE_BAR_COLOR;
 
-          let alpha = 0.62;
-
-          if (
-            rowComplete
-          ) {
-            glyph =
-              FILL_BAR_GLYPH;
-
-            color =
-              COMPLETE_BAR_COLOR;
-
-            alpha = 1;
-          } else if (
-            slotProgress >= 1
-          ) {
-            glyph =
-              FILL_BAR_GLYPH;
-
-            color =
-              ACTIVE_BAR_COLOR;
-
-            alpha = 1;
-          } else if (
-            slotProgress > 0
-          ) {
-            const stageIndex =
-              Math.min(
-                ACTIVE_FILL_STAGES.length -
-                  1,
-                Math.floor(
-                  slotProgress *
-                  ACTIVE_FILL_STAGES.length
-                )
-              );
-
-            glyph =
-              ACTIVE_FILL_STAGES[
-                stageIndex
-              ];
-
-            color =
-              ACTIVE_BAR_COLOR;
-
-            alpha = 1;
-          }
-
-          this.drawBucketGlyph(
-            glyph,
-            originX,
-            originY,
-            LOADING_START_COLUMN +
-              slot,
-            rowIndex,
-            color,
-            alpha
-          );
+          alpha = 1;
         }
+
+        this.drawBucketGlyph(
+          glyph,
+          originX,
+          originY,
+          art.loadingStartColumn +
+            slot,
+          rowIndex,
+          color,
+          alpha
+        );
       }
-    );
+    }
   }
 
-  renderDrainBars(
+  renderDiscardBars(
+    art,
     originX,
     originY
   ) {
-    // Performance note:
-    // - always exactly 39 potential bucket slots;
-    // - no setInterval/setTimeout per slot;
-    // - no objects/arrays created per slot or per frame;
-    // - 16x only changes slotDuration, not amount of work.
-    const slotDuration =
-      this.drainSlotDurationMs;
-
     for (
       let rowListIndex = 0;
       rowListIndex <
-      LOADING_ROW_COUNT;
+      art.loadingRows.length;
       rowListIndex += 1
     ) {
       const rowIndex =
-        LOADING_ROWS[
+        art.loadingRows[
           rowListIndex
         ];
 
-      let drainRowIndex = -1;
-
-      // At most 3 comparisons. `drainRowOrder` was cached at release.
       for (
-        let index = 0;
-        index <
-        this.drainRowOrder.length;
-        index += 1
+        let slot = 0;
+        slot <
+        LOADING_SLOT_COUNT;
+        slot += 1
       ) {
-        if (
-          this.drainRowOrder[index] ===
-          rowIndex
-        ) {
-          drainRowIndex =
-            index;
-          break;
-        }
+        const maskIndex =
+          rowListIndex *
+          LOADING_SLOT_COUNT +
+          slot;
+
+        const shouldDiscard =
+          this.discardSlotMask[
+            maskIndex
+          ] === 1;
+
+        this.drawBucketGlyph(
+          shouldDiscard
+            ? DISCARD_GLYPH
+            : EMPTY_BAR_GLYPH,
+          originX,
+          originY,
+          art.loadingStartColumn +
+            slot,
+          rowIndex,
+          shouldDiscard
+            ? DISCARD_COLOR
+            : EMPTY_BAR_COLOR,
+          shouldDiscard
+            ? 1
+            : 0.62
+        );
       }
+    }
+  }
+
+  renderDrainBars(
+    art,
+    originX,
+    originY
+  ) {
+    // Cost scales linearly with configured capacity: 13 slots per active row.
+    // No timer/particle is created per slot. High drain speed only changes
+    // elapsed-time math and does not increase update frequency.
+    for (
+      let rowListIndex = 0;
+      rowListIndex <
+      art.loadingRows.length;
+      rowListIndex += 1
+    ) {
+      const rowIndex =
+        art.loadingRows[
+          rowListIndex
+        ];
+
+      const drainRowIndex =
+        rowIndex <
+          this.drainRowIndexByRow.length
+          ? this.drainRowIndexByRow[
+              rowIndex
+            ]
+          : -1;
 
       for (
         let slot = 0;
@@ -1340,33 +2197,10 @@ export class BucketLayer {
         if (
           drainRowIndex >= 0
         ) {
-          // Drain each completed white row from right -> left.
-          const drainSlotIndex =
-            (
-              drainRowIndex *
-              LOADING_SLOT_COUNT
-            ) +
-            (
-              LOADING_SLOT_COUNT -
-              1 -
-              slot
-            );
-
-          const slotStartMs =
-            drainSlotIndex *
-            slotDuration;
-
           const slotProgress =
-            Math.max(
-              0,
-              Math.min(
-                1,
-                (
-                  this.drainElapsedMs -
-                  slotStartMs
-                ) /
-                slotDuration
-              )
+            this.getDrainSlotProgress(
+              rowIndex,
+              slot
             );
 
           if (
@@ -1405,7 +2239,7 @@ export class BucketLayer {
           glyph,
           originX,
           originY,
-          SWIPE_LOADING_START_COLUMN +
+          art.loadingStartColumn +
             slot,
           rowIndex,
           color,
