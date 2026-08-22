@@ -1,0 +1,21 @@
+{
+  "coralVerticalSpacing": 1,
+  "coralHorizontalSpacing": 1,
+  "coralHeight": 35,
+  "algaeHeight": 60,
+  "animationIntensity": 150,
+  "bucketScale": 1,
+  "bucketLoadingRows": 1,
+  "bucketDrainSpeedMultiplier": 7,
+  "bucketBounceCells": 1.6,
+  "bucketLoadingSlotDurationMs": 1000,
+  "attentionValuePerCell": 1,
+  "appetiteMultiplier": 50,
+  "gachaJoyChancePct": 5,
+  "gachaRageChancePct": 5,
+  "gachaFearChancePct": 5,
+  "gachaGriefChancePct": 5,
+  "specialCellDrainDurationMultiplier": 6,
+  "nervousBufferDecayPerSecond": 0.1,
+  "bucketFillSpeedMultiplier": 1
+}

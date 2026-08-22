@@ -1,9 +1,9 @@
-import { CONTROL_DEFINITIONS, STORAGE_KEYS, saveConfig } from "../config.js";
+import { CONTROL_DEFINITIONS, STORAGE_KEYS } from "../config.js";
 
 function formatValue(value) {
   return Number(value).toLocaleString("pt-BR", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 3
   });
 }
 
@@ -38,14 +38,30 @@ function createControl(key, definition, value) {
       max="${definition.max}"
       step="${definition.step}"
       value="${value}"
-      ${inputType === "number" ? 'inputmode="numeric"' : ""}
+      ${
+        inputType === "number"
+          ? `inputmode="${
+              Number.isInteger(
+                Number(definition.step)
+              )
+                ? "numeric"
+                : "decimal"
+            }"`
+          : ""
+      }
     />
   `;
 
   return wrapper;
 }
 
-export function setupDebugPanel({ config, engine }) {
+export function setupDebugPanel({
+  config,
+  engine,
+  onConfigChanged,
+  onIncreaseActiveBuffer,
+  onResetActiveBuffer
+}) {
   const controlsRoot = document.getElementById("debugControls");
   const panel = document.getElementById("debugPanel");
   const toggle = document.getElementById("debugToggle");
@@ -87,14 +103,37 @@ export function setupDebugPanel({ config, engine }) {
       );
 
       if (input.type === "number") {
-        nextValue = Math.round(nextValue);
-        input.value = String(nextValue);
+        const step =
+          Number(
+            definition.step
+          );
+
+        if (
+          Number.isInteger(step)
+        ) {
+          nextValue =
+            Math.round(
+              nextValue
+            );
+        }
+
+        input.value =
+          String(
+            nextValue
+          );
       }
 
       config[key] = nextValue;
       updateDisplay();
-      saveConfig(config);
 
+      onConfigChanged?.(
+        key,
+        nextValue
+      );
+
+      // As alterações do debug são apenas runtime. Ao recarregar, o app
+      // volta aos valores escritos em game-config.json.
+      //
       // Controles de interaction usam o mesmo objeto config compartilhado,
       // então não precisam reconstruir o oceano.
       if (definition.affectsOcean === false) return;
@@ -140,6 +179,24 @@ export function setupDebugPanel({ config, engine }) {
     const isOpen = toggle.getAttribute("aria-expanded") === "true";
     setPanelOpen(!isOpen);
   });
+
+  document.getElementById(
+    "increaseNervousBuffer"
+  ).addEventListener(
+    "click",
+    () => {
+      onIncreaseActiveBuffer?.();
+    }
+  );
+
+  document.getElementById(
+    "resetNervousBuffer"
+  ).addEventListener(
+    "click",
+    () => {
+      onResetActiveBuffer?.();
+    }
+  );
 
   document.getElementById("refreshView").addEventListener("click", () => {
     engine.rebuildCurrentVariation();

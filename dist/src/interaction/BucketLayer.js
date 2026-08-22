@@ -1,3 +1,9 @@
+import {
+  BUCKET_CELL_TYPES,
+  getBucketCellMeta,
+  isSpecialBucketCell
+} from "../game/GachaSystem.js";
+
 const BUCKET_COLOR = "#ffffff";
 const EMPTY_BAR_COLOR = "#7188b8";
 const ACTIVE_BAR_COLOR = "#fff35d";
@@ -232,7 +238,10 @@ export class BucketLayer {
     {
       onRefresh,
       onAttentionCellDrained,
-      onDiscardedSlots
+      onSpecialCellDrainStart,
+      onSpecialCellDrained,
+      onDiscardedSlots,
+      gachaSystem
     } = {}
   ) {
     this.canvas = canvas;
@@ -246,8 +255,17 @@ export class BucketLayer {
     this.onAttentionCellDrained =
       onAttentionCellDrained;
 
+    this.onSpecialCellDrainStart =
+      onSpecialCellDrainStart;
+
+    this.onSpecialCellDrained =
+      onSpecialCellDrained;
+
     this.onDiscardedSlots =
       onDiscardedSlots;
+
+    this.gachaSystem =
+      gachaSystem;
 
     // loading | swipe
     this.mode = "loading";
@@ -257,13 +275,24 @@ export class BucketLayer {
 
     this.loadingElapsedMs = 0;
 
+    // Bottom -> top. A row is rolled only after all 13 yellow loading slots
+    // complete, so unfinished rows never expose their gacha result.
+    this.loadingRewardRows = [];
+
     this.drainElapsedMs = 0;
     this.drainCompletedRows = 0;
     this.drainBucketCapacityRows = 0;
     this.drainRowOrder = [];
-    this.drainRowIndexByRow =
-      new Int16Array(0);
+    this.drainRewardRows = [];
+
+    // Timeline is built once on release. Variable per-cell duration therefore
+    // adds no timers and is ready for future contextual drain-speed rules.
+    this.drainTimeline = [];
+    this.drainTimelineIndexByCell =
+      new Int32Array(0);
+
     this.creditedDrainSlots = 0;
+    this.announcedDrainSlots = 0;
     this.drainFinished = false;
 
     // Double-tap discard state. `lastDiscardedSlotCount` intentionally
@@ -449,13 +478,41 @@ export class BucketLayer {
       false;
   }
 
-  get loadingSlotDurationMs() {
-    return Math.max(
-      50,
+  get bucketFillSpeedMultiplier() {
+    const configured =
       Number(
         this.ocean.config
-          .bucketLoadingSlotDurationMs
-      ) || 1000
+          .bucketFillSpeedMultiplier
+      );
+
+    return Math.max(
+      0.01,
+      Math.min(
+        50,
+        Number.isFinite(configured)
+          ? configured
+          : 1
+      )
+    );
+  }
+
+  get loadingSlotDurationMs() {
+    const baseDurationMs =
+      Math.max(
+        50,
+        Number(
+          this.ocean.config
+            .bucketLoadingSlotDurationMs
+        ) || 1000
+      );
+
+    // Tuning keeps the old 1000ms-per-slot baseline in JSON while exposing
+    // a more intuitive speed multiplier in debug. Speed changes only the
+    // elapsed-time math; it never adds timers or work per frame.
+    return Math.max(
+      16,
+      baseDurationMs /
+        this.bucketFillSpeedMultiplier
     );
   }
 
@@ -483,7 +540,7 @@ export class BucketLayer {
         16,
         Number.isFinite(configured)
           ? configured
-          : 12
+          : 7
       )
     );
   }
@@ -492,6 +549,26 @@ export class BucketLayer {
     return (
       this.loadingSlotDurationMs /
       this.drainSpeedMultiplier
+    );
+  }
+
+  get specialCellDrainDurationMultiplier() {
+    const configured =
+      Number(
+        this.ocean.config
+          .specialCellDrainDurationMultiplier
+      );
+
+    return Math.max(
+      1,
+      Math.min(
+        24,
+        Number.isFinite(
+          configured
+        )
+          ? configured
+          : 6
+      )
     );
   }
 
@@ -646,10 +723,186 @@ export class BucketLayer {
   }
 
   getDrainTotalDurationMs() {
+    if (
+      this.drainTimeline.length === 0
+    ) {
+      return 0;
+    }
+
+    return this.drainTimeline[
+      this.drainTimeline.length - 1
+    ].endMs;
+  }
+
+  resolveNewlyCompletedRows() {
+    const completedRows =
+      this.getCompletedLoadingRows();
+
+    while (
+      this.loadingRewardRows.length <
+      completedRows
+    ) {
+      const loadingOrder =
+        this.loadingRewardRows.length;
+
+      const rowRewards =
+        this.gachaSystem?.rollRow(
+          LOADING_SLOT_COUNT,
+          {
+            bucketRows:
+              this.bucketLoadingRows,
+            loadingOrder
+          }
+        ) ??
+        new Uint8Array(
+          LOADING_SLOT_COUNT
+        );
+
+      this.loadingRewardRows.push(
+        rowRewards
+      );
+    }
+  }
+
+  buildDrainTimeline(
+    swipeArt
+  ) {
+    this.drainTimeline = [];
+
+    this.drainTimelineIndexByCell =
+      new Int32Array(
+        swipeArt.height *
+        LOADING_SLOT_COUNT
+      );
+
+    this.drainTimelineIndexByCell.fill(
+      -1
+    );
+
+    const normalDuration =
+      this.drainSlotDurationMs;
+
+    const specialDuration =
+      normalDuration *
+      this
+        .specialCellDrainDurationMultiplier;
+
+    let cursorMs = 0;
+
+    for (
+      let drainRowIndex = 0;
+      drainRowIndex <
+      this.drainRowOrder.length;
+      drainRowIndex += 1
+    ) {
+      const rowIndex =
+        this.drainRowOrder[
+          drainRowIndex
+        ];
+
+      // loadingRewardRows is bottom -> top, while drainRowOrder is
+      // highest-completed -> bottom.
+      const rewardRowIndex =
+        this.drainCompletedRows -
+        1 -
+        drainRowIndex;
+
+      const rewardRow =
+        this.drainRewardRows[
+          rewardRowIndex
+        ] ??
+        new Uint8Array(
+          LOADING_SLOT_COUNT
+        );
+
+      for (
+        let withinRowIndex = 0;
+        withinRowIndex <
+        LOADING_SLOT_COUNT;
+        withinRowIndex += 1
+      ) {
+        const slot =
+          LOADING_SLOT_COUNT -
+          1 -
+          withinRowIndex;
+
+        const cellType =
+          rewardRow[slot] ??
+          BUCKET_CELL_TYPES.ATTENTION;
+
+        const durationMs =
+          isSpecialBucketCell(
+            cellType
+          )
+            ? specialDuration
+            : normalDuration;
+
+        const timelineIndex =
+          this.drainTimeline.length;
+
+        const entry = {
+          timelineIndex,
+          rowIndex,
+          slot,
+          cellType,
+          startMs:
+            cursorMs,
+          durationMs,
+          endMs:
+            cursorMs +
+            durationMs
+        };
+
+        this.drainTimeline.push(
+          entry
+        );
+
+        this.drainTimelineIndexByCell[
+          rowIndex *
+          LOADING_SLOT_COUNT +
+          slot
+        ] =
+          timelineIndex;
+
+        cursorMs =
+          entry.endMs;
+      }
+    }
+  }
+
+  getDrainTimelineEntry(
+    rowIndex,
+    slot
+  ) {
+    const lookupIndex =
+      rowIndex *
+      LOADING_SLOT_COUNT +
+      slot;
+
+    if (
+      lookupIndex < 0 ||
+      lookupIndex >=
+        this.drainTimelineIndexByCell
+          .length
+    ) {
+      return null;
+    }
+
+    const timelineIndex =
+      this.drainTimelineIndexByCell[
+        lookupIndex
+      ];
+
+    if (
+      timelineIndex < 0
+    ) {
+      return null;
+    }
+
     return (
-      this.drainCompletedRows *
-      LOADING_SLOT_COUNT *
-      this.drainSlotDurationMs
+      this.drainTimeline[
+        timelineIndex
+      ] ?? null
     );
   }
 
@@ -715,6 +968,9 @@ export class BucketLayer {
         this.drainBucketCapacityRows
       );
 
+    // Make sure the just-completed row has already received its gacha roll.
+    this.resolveNewlyCompletedRows();
+
     // Completed rows are bottom-first. Drain highest completed row first.
     this.drainRowOrder =
       swipeArt.loadingRows
@@ -724,31 +980,31 @@ export class BucketLayer {
         )
         .reverse();
 
-    this.drainRowIndexByRow =
-      new Int16Array(
-        swipeArt.height
-      );
+    // Freeze the row contents for the current IDLE-SWIPE. Future gacha
+    // probability changes affect only rows completed after this cycle.
+    this.drainRewardRows =
+      this.loadingRewardRows
+        .slice(
+          0,
+          this.drainCompletedRows
+        )
+        .map(
+          (row) =>
+            new Uint8Array(
+              row
+            )
+        );
 
-    this.drainRowIndexByRow.fill(
-      -1
+    this.buildDrainTimeline(
+      swipeArt
     );
-
-    for (
-      let index = 0;
-      index <
-      this.drainRowOrder.length;
-      index += 1
-    ) {
-      this.drainRowIndexByRow[
-        this.drainRowOrder[index]
-      ] = index;
-    }
 
     this.discardElapsedMs = 0;
     this.discardSlotMask =
       new Uint8Array(0);
     this.discardedSlotCount = 0;
     this.creditedDrainSlots = 0;
+    this.announcedDrainSlots = 0;
 
     this.loadingElapsedMs = 0;
     this.drainElapsedMs = 0;
@@ -791,9 +1047,12 @@ export class BucketLayer {
         this.drainCompletedRows = 0;
         this.drainBucketCapacityRows = 0;
         this.drainRowOrder = [];
-        this.drainRowIndexByRow =
-          new Int16Array(0);
+        this.drainRewardRows = [];
+        this.drainTimeline = [];
+        this.drainTimelineIndexByCell =
+          new Int32Array(0);
         this.creditedDrainSlots = 0;
+        this.announcedDrainSlots = 0;
         this.drainFinished = false;
         this.discardElapsedMs = 0;
         this.discardSlotMask =
@@ -804,6 +1063,7 @@ export class BucketLayer {
         );
         this.bounceElapsedMs = 0;
         this.loadingElapsedMs = 0;
+        this.loadingRewardRows = [];
       }
     );
   }
@@ -812,39 +1072,17 @@ export class BucketLayer {
     rowIndex,
     slot
   ) {
-    if (
-      rowIndex < 0 ||
-      rowIndex >=
-        this.drainRowIndexByRow.length
-    ) {
-      return 1;
-    }
-
-    const drainRowIndex =
-      this.drainRowIndexByRow[
-        rowIndex
-      ];
-
-    if (
-      drainRowIndex < 0
-    ) {
-      return 1;
-    }
-
-    const drainSlotIndex =
-      (
-        drainRowIndex *
-        LOADING_SLOT_COUNT
-      ) +
-      (
-        LOADING_SLOT_COUNT -
-        1 -
+    const entry =
+      this.getDrainTimelineEntry(
+        rowIndex,
         slot
       );
 
-    const slotStartMs =
-      drainSlotIndex *
-      this.drainSlotDurationMs;
+    if (
+      !entry
+    ) {
+      return 1;
+    }
 
     return Math.max(
       0,
@@ -852,16 +1090,25 @@ export class BucketLayer {
         1,
         (
           this.drainElapsedMs -
-          slotStartMs
+          entry.startMs
         ) /
-        this.drainSlotDurationMs
+        Math.max(
+          1,
+          entry.durationMs
+        )
       )
     );
   }
 
-  getDrainSlotScreenPosition(
-    drainSlotIndex
+  getDrainEntryScreenPosition(
+    entry
   ) {
+    if (
+      !entry
+    ) {
+      return null;
+    }
+
     const capacityRows =
       this.drainBucketCapacityRows ||
       this.bucketLoadingRows;
@@ -871,33 +1118,6 @@ export class BucketLayer {
         "swipe",
         capacityRows
       );
-
-    const drainRowIndex =
-      Math.floor(
-        drainSlotIndex /
-        LOADING_SLOT_COUNT
-      );
-
-    const withinRowIndex =
-      drainSlotIndex %
-      LOADING_SLOT_COUNT;
-
-    const rowIndex =
-      this.drainRowOrder[
-        drainRowIndex
-      ];
-
-    if (
-      rowIndex === undefined
-    ) {
-      return null;
-    }
-
-    // Drain order inside each row is right -> left.
-    const slot =
-      LOADING_SLOT_COUNT -
-      1 -
-      withinRowIndex;
 
     const {
       originX,
@@ -911,13 +1131,13 @@ export class BucketLayer {
       originX +
       (
         art.loadingStartColumn +
-        slot
+        entry.slot
       ) *
       this.bucketScale;
 
     const logicalY =
       originY +
-      rowIndex *
+      entry.rowIndex *
       this.bucketScale;
 
     return {
@@ -934,57 +1154,116 @@ export class BucketLayer {
     };
   }
 
-  creditNewlyDrainedSlots() {
-    if (
-      !this.onAttentionCellDrained
+  announceNewlyStartedSpecialCells() {
+    while (
+      this.announcedDrainSlots <
+        this.drainTimeline.length &&
+      this.drainTimeline[
+        this.announcedDrainSlots
+      ].startMs <=
+        this.drainElapsedMs
     ) {
-      return;
-    }
+      const entry =
+        this.drainTimeline[
+          this.announcedDrainSlots
+        ];
 
-    const totalSlots =
-      this.drainCompletedRows *
-      LOADING_SLOT_COUNT;
-
-    if (
-      totalSlots <= 0
-    ) {
-      return;
-    }
-
-    const completedNow =
-      Math.min(
-        totalSlots,
-        Math.floor(
-          (
-            this.drainElapsedMs +
-            0.0001
-          ) /
-          this.drainSlotDurationMs
+      if (
+        isSpecialBucketCell(
+          entry.cellType
         )
-      );
+      ) {
+        const meta =
+          getBucketCellMeta(
+            entry.cellType
+          );
 
+        const source =
+          this.getDrainEntryScreenPosition(
+            entry
+          );
+
+        this.onSpecialCellDrainStart?.(
+          {
+            type:
+              entry.cellType,
+            id:
+              meta.id,
+            label:
+              meta.label,
+            color:
+              meta.color,
+            durationMs:
+              entry.durationMs,
+            sourceX:
+              source?.x,
+            sourceY:
+              source?.y
+          }
+        );
+      }
+
+      this.announcedDrainSlots +=
+        1;
+    }
+  }
+
+  creditNewlyDrainedSlots() {
     while (
       this.creditedDrainSlots <
-      completedNow
+        this.drainTimeline.length &&
+      this.drainTimeline[
+        this.creditedDrainSlots
+      ].endMs <=
+        this.drainElapsedMs +
+        0.0001
     ) {
-      const drainSlotIndex =
-        this.creditedDrainSlots;
+      const entry =
+        this.drainTimeline[
+          this.creditedDrainSlots
+        ];
 
       const source =
-        this.getDrainSlotScreenPosition(
-          drainSlotIndex
+        this.getDrainEntryScreenPosition(
+          entry
         );
 
       if (
-        source
+        entry.cellType ===
+        BUCKET_CELL_TYPES.ATTENTION
       ) {
-        this.onAttentionCellDrained(
+        this.onAttentionCellDrained?.(
           {
             sourceX:
-              source.x,
+              source?.x,
             sourceY:
-              source.y,
-            drainSlotIndex
+              source?.y,
+            drainSlotIndex:
+              entry.timelineIndex
+          }
+        );
+      } else {
+        const meta =
+          getBucketCellMeta(
+            entry.cellType
+          );
+
+        this.onSpecialCellDrained?.(
+          {
+            type:
+              entry.cellType,
+            id:
+              meta.id,
+            label:
+              meta.label,
+            color:
+              meta.color,
+            sourceX:
+              source?.x,
+            sourceY:
+              source?.y,
+            drainSlotIndex:
+              entry.timelineIndex
           }
         );
       }
@@ -1689,6 +1968,8 @@ export class BucketLayer {
           deltaMs
         );
 
+      this.resolveNewlyCompletedRows();
+
       return;
     }
 
@@ -1709,9 +1990,12 @@ export class BucketLayer {
           deltaMs
         );
 
-      // A white cell earns Attention exactly once, at the moment its drain
-      // progress reaches the empty state. A double-tap never reaches this
-      // path for the slots it discards.
+      // Special cells announce themselves when their individual drain starts.
+      // The terminal animation uses the same precomputed duration.
+      this.announceNewlyStartedSpecialCells();
+
+      // Only white/ATTENTION cells score. Emotion cells replace Attention
+      // rather than adding to it.
       this.creditNewlyDrainedSlots();
 
       if (
@@ -1843,6 +2127,66 @@ export class BucketLayer {
       this.bucketScale,
       false
     );
+  }
+
+  drawRewardBucketGlyph(
+    glyph,
+    originX,
+    originY,
+    colIndex,
+    rowIndex,
+    cellType,
+    alpha = 1
+  ) {
+    const meta =
+      getBucketCellMeta(
+        cellType
+      );
+
+    if (
+      !isSpecialBucketCell(
+        cellType
+      )
+    ) {
+      this.drawBucketGlyph(
+        glyph,
+        originX,
+        originY,
+        colIndex,
+        rowIndex,
+        meta.color,
+        alpha
+      );
+
+      return;
+    }
+
+    this.ctx.save();
+
+    this.ctx.shadowColor =
+      meta.glowColor;
+
+    this.ctx.shadowBlur =
+      Math.max(
+        5,
+        this.ocean.cellW *
+        0.72
+      );
+
+    this.ctx.shadowOffsetX = 0;
+    this.ctx.shadowOffsetY = 0;
+
+    this.drawBucketGlyph(
+      glyph,
+      originX,
+      originY,
+      colIndex,
+      rowIndex,
+      meta.color,
+      alpha
+    );
+
+    this.ctx.restore();
   }
 
   renderLoadingArt() {
@@ -2043,14 +2387,25 @@ export class BucketLayer {
 
         let alpha = 0.62;
 
+        let completedCellType =
+          BUCKET_CELL_TYPES.ATTENTION;
+
         if (
           rowComplete
         ) {
           glyph =
             FILL_BAR_GLYPH;
 
+          completedCellType =
+            this.loadingRewardRows[
+              loadingOrder
+            ]?.[slot] ??
+            BUCKET_CELL_TYPES.ATTENTION;
+
           color =
-            COMPLETE_BAR_COLOR;
+            getBucketCellMeta(
+              completedCellType
+            ).color;
 
           alpha = 1;
         } else if (
@@ -2087,16 +2442,31 @@ export class BucketLayer {
           alpha = 1;
         }
 
-        this.drawBucketGlyph(
-          glyph,
-          originX,
-          originY,
-          art.loadingStartColumn +
-            slot,
-          rowIndex,
-          color,
-          alpha
-        );
+        if (
+          rowComplete
+        ) {
+          this.drawRewardBucketGlyph(
+            glyph,
+            originX,
+            originY,
+            art.loadingStartColumn +
+              slot,
+            rowIndex,
+            completedCellType,
+            alpha
+          );
+        } else {
+          this.drawBucketGlyph(
+            glyph,
+            originX,
+            originY,
+            art.loadingStartColumn +
+              slot,
+            rowIndex,
+            color,
+            alpha
+          );
+        }
       }
     }
   }
@@ -2158,9 +2528,8 @@ export class BucketLayer {
     originX,
     originY
   ) {
-    // Cost scales linearly with configured capacity: 13 slots per active row.
-    // No timer/particle is created per slot. High drain speed only changes
-    // elapsed-time math and does not increase update frequency.
+    // Timeline lookup keeps render cost linear in visible bucket capacity.
+    // Special duration does not add timers or extra update loops.
     for (
       let rowListIndex = 0;
       rowListIndex <
@@ -2172,20 +2541,18 @@ export class BucketLayer {
           rowListIndex
         ];
 
-      const drainRowIndex =
-        rowIndex <
-          this.drainRowIndexByRow.length
-          ? this.drainRowIndexByRow[
-              rowIndex
-            ]
-          : -1;
-
       for (
         let slot = 0;
         slot <
         LOADING_SLOT_COUNT;
         slot += 1
       ) {
+        const entry =
+          this.getDrainTimelineEntry(
+            rowIndex,
+            slot
+          );
+
         let glyph =
           EMPTY_BAR_GLYPH;
 
@@ -2194,8 +2561,11 @@ export class BucketLayer {
 
         let alpha = 0.62;
 
+        let cellType =
+          BUCKET_CELL_TYPES.ATTENTION;
+
         if (
-          drainRowIndex >= 0
+          entry
         ) {
           const slotProgress =
             this.getDrainSlotProgress(
@@ -2206,8 +2576,13 @@ export class BucketLayer {
           if (
             slotProgress < 1
           ) {
+            cellType =
+              entry.cellType;
+
             color =
-              COMPLETE_BAR_COLOR;
+              getBucketCellMeta(
+                cellType
+              ).color;
 
             alpha = 1;
 
@@ -2235,16 +2610,36 @@ export class BucketLayer {
           }
         }
 
-        this.drawBucketGlyph(
-          glyph,
-          originX,
-          originY,
-          art.loadingStartColumn +
-            slot,
-          rowIndex,
-          color,
-          alpha
-        );
+        if (
+          entry &&
+          glyph !==
+            EMPTY_BAR_GLYPH &&
+          isSpecialBucketCell(
+            cellType
+          )
+        ) {
+          this.drawRewardBucketGlyph(
+            glyph,
+            originX,
+            originY,
+            art.loadingStartColumn +
+              slot,
+            rowIndex,
+            cellType,
+            alpha
+          );
+        } else {
+          this.drawBucketGlyph(
+            glyph,
+            originX,
+            originY,
+            art.loadingStartColumn +
+              slot,
+            rowIndex,
+            color,
+            alpha
+          );
+        }
       }
     }
   }

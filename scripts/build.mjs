@@ -9,6 +9,10 @@ const dist = resolve(projectRoot, "dist");
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await cp(resolve(projectRoot, "index.html"), resolve(dist, "index.html"));
+await cp(
+  resolve(projectRoot, "game-config.json"),
+  resolve(dist, "game-config.json")
+);
 await cp(resolve(projectRoot, "src"), resolve(dist, "src"), { recursive: true });
 
 console.log("Build estático criado em dist/");

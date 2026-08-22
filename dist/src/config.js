@@ -1,127 +1,288 @@
 export const STORAGE_KEYS = {
-  config: "ascii-ocean-mobile-config-v5",
-  panel: "ascii-ocean-mobile-debug-panel-open"
+  panel:
+    "ascii-ocean-mobile-debug-panel-open"
 };
 
-export const DEFAULT_CONFIG = Object.freeze({
-  coralVerticalSpacing: 1,
-  coralHorizontalSpacing: 1,
-  coralHeight: 35,
-  algaeHeight: 60,
-  animationIntensity: 150,
-  bucketScale: 1,
-  bucketLoadingRows: 3,
-  bucketDrainSpeedMultiplier: 12,
-  bucketBounceCells: 1.6,
-  attentionValuePerCell: 1,
-  // Cada segmento individual das três barras do balde leva este tempo.
-  // Mantido fora do menu de debug por enquanto, mas centralizado aqui para
-  // calibração futura.
-  bucketLoadingSlotDurationMs: 1000
-});
+const GAME_CONFIG_URL =
+  new URL(
+    "../game-config.json",
+    import.meta.url
+  );
 
-export const CONTROL_DEFINITIONS = Object.freeze({
-  coralVerticalSpacing: {
-    label: "Distância vertical do coral",
-    min: 0.25,
-    max: 6,
-    step: 0.25,
-    suffix: " cel",
-    structural: true
-  },
-  coralHorizontalSpacing: {
-    label: "Distância horizontal do coral",
-    min: 0.25,
-    max: 8,
-    step: 0.25,
-    suffix: " cel",
-    structural: true
-  },
-  coralHeight: {
-    label: "Altura máxima dos corais",
-    min: 10,
-    max: 65,
-    step: 1,
-    suffix: "%",
-    structural: true
-  },
-  algaeHeight: {
-    label: "Altura máxima das algas",
-    min: 15,
-    max: 80,
-    step: 1,
-    suffix: "%",
-    structural: true
-  },
-  bucketLoadingRows: {
-    label: "Tamanho do balde",
-    inputType: "number",
-    min: 1,
-    max: 30,
-    step: 1,
-    suffix: " linhas",
-    structural: false,
-    affectsOcean: false
-  },
-  bucketDrainSpeedMultiplier: {
-    label: "Velocidade de esvaziamento",
-    min: 0.5,
-    max: 16,
-    step: 0.25,
-    suffix: "x",
-    structural: false,
-    affectsOcean: false
-  },
-  bucketBounceCells: {
-    label: "Elasticidade do balde",
-    min: 0,
-    max: 2.5,
-    step: 0.1,
-    suffix: " cel",
-    structural: false,
-    affectsOcean: false
-  },
-  attentionValuePerCell: {
-    label: "Attention por célula",
-    inputType: "number",
-    min: 1,
-    max: 9999,
-    step: 1,
-    suffix: " pts",
-    structural: false,
-    affectsOcean: false
-  },
-});
+const REQUIRED_NUMERIC_KEYS = [
+  "coralVerticalSpacing",
+  "coralHorizontalSpacing",
+  "coralHeight",
+  "algaeHeight",
+  "animationIntensity",
+  "bucketScale",
+  "bucketLoadingRows",
+  "bucketDrainSpeedMultiplier",
+  "bucketBounceCells",
+  "bucketLoadingSlotDurationMs",
+  "bucketFillSpeedMultiplier",
+  "attentionValuePerCell",
+  "appetiteMultiplier",
+  "gachaJoyChancePct",
+  "gachaRageChancePct",
+  "gachaFearChancePct",
+  "gachaGriefChancePct",
+  "specialCellDrainDurationMultiplier",
+  "nervousBufferDecayPerSecond"
+];
 
-export function loadConfig() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.config) || "{}");
-    return {
-      ...DEFAULT_CONFIG,
-      ...Object.fromEntries(
-        Object.keys(DEFAULT_CONFIG).map((key) => {
-          const numericValue = Number(stored[key]);
-          return [
-            key,
-            Number.isFinite(numericValue)
-              ? numericValue
-              : DEFAULT_CONFIG[key]
-          ];
-        })
-      )
-    };
-  } catch {
-    return { ...DEFAULT_CONFIG };
+export const CONTROL_DEFINITIONS =
+  Object.freeze({
+    bucketLoadingRows: {
+      label:
+        "Tamanho do balde",
+      inputType: "number",
+      min: 1,
+      max: 30,
+      step: 1,
+      suffix: " linhas",
+      structural: false,
+      affectsOcean: false
+    },
+    bucketFillSpeedMultiplier: {
+      label:
+        "Velocidade de enchimento",
+      inputType: "number",
+      min: 0.25,
+      max: 20,
+      step: 0.25,
+      suffix: "x",
+      structural: false,
+      affectsOcean: false
+    },
+    bucketDrainSpeedMultiplier: {
+      label:
+        "Velocidade de esvaziamento",
+      min: 0.5,
+      max: 16,
+      step: 0.25,
+      suffix: "x",
+      structural: false,
+      affectsOcean: false
+    },
+    attentionValuePerCell: {
+      label:
+        "Attention por célula",
+      inputType: "number",
+      min: 1,
+      max: 9999,
+      step: 1,
+      suffix: " pts",
+      structural: false,
+      affectsOcean: false
+    },
+    appetiteMultiplier: {
+      label:
+        "Multiplicador de Apetite",
+      inputType: "number",
+      min: 1,
+      max: 999999,
+      step: 1,
+      suffix: "x",
+      structural: false,
+      affectsOcean: false
+    },
+    gachaJoyChancePct: {
+      label:
+        "Chance JOY",
+      inputType: "number",
+      min: 0,
+      max: 100,
+      step: 0.5,
+      suffix: "%",
+      structural: false,
+      affectsOcean: false
+    },
+    gachaRageChancePct: {
+      label:
+        "Chance RAGE",
+      inputType: "number",
+      min: 0,
+      max: 100,
+      step: 0.5,
+      suffix: "%",
+      structural: false,
+      affectsOcean: false
+    },
+    gachaFearChancePct: {
+      label:
+        "Chance FEAR",
+      inputType: "number",
+      min: 0,
+      max: 100,
+      step: 0.5,
+      suffix: "%",
+      structural: false,
+      affectsOcean: false
+    },
+    gachaGriefChancePct: {
+      label:
+        "Chance GRIEF",
+      inputType: "number",
+      min: 0,
+      max: 100,
+      step: 0.5,
+      suffix: "%",
+      structural: false,
+      affectsOcean: false
+    },
+    specialCellDrainDurationMultiplier: {
+      label:
+        "Duração célula especial",
+      min: 1,
+      max: 12,
+      step: 0.25,
+      suffix: "x",
+      structural: false,
+      affectsOcean: false
+    },
+    nervousBufferDecayPerSecond: {
+      label:
+        "Decaimento nervous buffer",
+      inputType: "number",
+      min: 0,
+      max: 5,
+      step: 0.001,
+      suffix: " pts/s",
+      structural: false,
+      affectsOcean: false
+    }
+  });
+
+function validateConfig(
+  rawConfig
+) {
+  if (
+    !rawConfig ||
+    typeof rawConfig !== "object"
+  ) {
+    throw new Error(
+      "game-config.json precisa conter um objeto JSON."
+    );
   }
+
+  const config = {};
+
+  for (
+    const key
+    of REQUIRED_NUMERIC_KEYS
+  ) {
+    const value =
+      Number(
+        rawConfig[key]
+      );
+
+    if (
+      !Number.isFinite(value)
+    ) {
+      throw new Error(
+        `Config inválida: "${key}" precisa ser numérico.`
+      );
+    }
+
+    config[key] =
+      value;
+  }
+
+  // Valores discretos que representam unidades inteiras.
+  config.bucketLoadingRows =
+    Math.max(
+      1,
+      Math.round(
+        config.bucketLoadingRows
+      )
+    );
+
+  config.attentionValuePerCell =
+    Math.max(
+      1,
+      Math.round(
+        config.attentionValuePerCell
+      )
+    );
+
+  config.appetiteMultiplier =
+    Math.max(
+      1,
+      Math.round(
+        config.appetiteMultiplier
+      )
+    );
+
+  for (
+    const chanceKey
+    of [
+      "gachaJoyChancePct",
+      "gachaRageChancePct",
+      "gachaFearChancePct",
+      "gachaGriefChancePct"
+    ]
+  ) {
+    config[chanceKey] =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          Number(
+            config[chanceKey]
+          )
+        )
+      );
+  }
+
+  config.specialCellDrainDurationMultiplier =
+    Math.max(
+      1,
+      Number(
+        config
+          .specialCellDrainDurationMultiplier
+      )
+    );
+
+  config.bucketFillSpeedMultiplier =
+    Math.max(
+      0.01,
+      Number(
+        config
+          .bucketFillSpeedMultiplier
+      )
+    );
+
+  config.nervousBufferDecayPerSecond =
+    Math.max(
+      0,
+      Number(
+        config
+          .nervousBufferDecayPerSecond
+      )
+    );
+
+  return config;
 }
 
-export function saveConfig(config) {
-  try {
-    localStorage.setItem(
-      STORAGE_KEYS.config,
-      JSON.stringify(config)
+export async function loadConfig() {
+  const response =
+    await fetch(
+      GAME_CONFIG_URL,
+      {
+        cache: "no-store"
+      }
     );
-  } catch {
-    // O app continua funcionando se o storage estiver indisponível.
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      `Não foi possível carregar game-config.json (${response.status}).`
+    );
   }
+
+  return validateConfig(
+    await response.json()
+  );
 }
