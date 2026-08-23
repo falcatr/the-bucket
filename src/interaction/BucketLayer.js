@@ -13,6 +13,7 @@ const EMPTY_BAR_GLYPH = "≡";
 const FILL_BAR_GLYPH = "█";
 const ACTIVE_FILL_STAGES = ["░", "▒", "▓", "█"];
 const DRAIN_FILL_STAGES = ["█", "▓", "▒", "░"];
+const SPECIAL_DRAIN_FILL_STAGES = ["█", "▓", "▒", "x"];
 
 const DISCARD_GLYPH = "X";
 const DISCARD_COLOR = "#fff35d";
@@ -42,7 +43,7 @@ const BOUNCE_PERIOD_MS = 560;
 const BOUNCE_DECAY_MS = 1250;
 
 const MIN_BUCKET_BODY_ROWS = 3;
-const MAX_BUCKET_LOADING_ROWS = 30;
+const MAX_BUCKET_LOADING_ROWS = 10;
 const LOADING_SLOT_COUNT = 13;
 
 const LOADING_START_COLUMN = 1;
@@ -241,6 +242,9 @@ export class BucketLayer {
       onSpecialCellDrainStart,
       onSpecialCellDrained,
       onDiscardedSlots,
+      onOceanOffsetChanged,
+      onFirstLoadingRowCompleted,
+      onSwipeCycleCompleted,
       gachaSystem
     } = {}
   ) {
@@ -263,6 +267,18 @@ export class BucketLayer {
 
     this.onDiscardedSlots =
       onDiscardedSlots;
+
+    this.onOceanOffsetChanged =
+      onOceanOffsetChanged;
+
+    this.onFirstLoadingRowCompleted =
+      onFirstLoadingRowCompleted;
+
+    this.onSwipeCycleCompleted =
+      onSwipeCycleCompleted;
+
+    this.firstLoadingRowCompletionEmitted =
+      false;
 
     this.gachaSystem =
       gachaSystem;
@@ -762,6 +778,22 @@ export class BucketLayer {
         rowRewards
       );
     }
+
+    if (
+      !this.firstLoadingRowCompletionEmitted &&
+      completedRows > 0
+    ) {
+      this.firstLoadingRowCompletionEmitted =
+        true;
+
+      this.onFirstLoadingRowCompleted?.(
+        {
+          bucketRows:
+            this.bucketLoadingRows,
+          completedRows
+        }
+      );
+    }
   }
 
   buildDrainTimeline(
@@ -1026,11 +1058,26 @@ export class BucketLayer {
     return true;
   }
 
-  finishDrainAndReturn() {
+  finishDrainAndReturn(
+    completedNaturally = true
+  ) {
     if (
       this.drainFinished
     ) {
       return;
+    }
+
+    if (
+      completedNaturally
+    ) {
+      this.onSwipeCycleCompleted?.(
+        {
+          bucketRows:
+            this.drainBucketCapacityRows,
+          completedRows:
+            this.drainCompletedRows
+        }
+      );
     }
 
     this.drainFinished = true;
@@ -1064,6 +1111,8 @@ export class BucketLayer {
         this.bounceElapsedMs = 0;
         this.loadingElapsedMs = 0;
         this.loadingRewardRows = [];
+        this.firstLoadingRowCompletionEmitted =
+          false;
       }
     );
   }
@@ -1397,7 +1446,9 @@ export class BucketLayer {
 
     this.discardedSlotCount = 0;
 
-    this.finishDrainAndReturn();
+    this.finishDrainAndReturn(
+      false
+    );
   }
 
   resetSwipeTapState(
@@ -1855,6 +1906,10 @@ export class BucketLayer {
 
     this.ocean.canvas.style.transform =
       `translate3d(0, ${offsetY.toFixed(2)}px, 0)`;
+
+    this.onOceanOffsetChanged?.(
+      offsetY
+    );
   }
 
   startOffsetAnimation(
@@ -2600,7 +2655,13 @@ export class BucketLayer {
                 );
 
               glyph =
-                DRAIN_FILL_STAGES[
+                (
+                  isSpecialBucketCell(
+                    cellType
+                  )
+                    ? SPECIAL_DRAIN_FILL_STAGES
+                    : DRAIN_FILL_STAGES
+                )[
                   stageIndex
                 ];
             } else {

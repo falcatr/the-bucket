@@ -31,6 +31,10 @@ import {
 } from "./ui/HudLayer.js";
 
 import {
+  AquariumLayer
+} from "./ui/AquariumLayer.js";
+
+import {
   setupDebugPanel
 } from "./ui/debugPanel.js";
 
@@ -54,6 +58,11 @@ async function boot() {
       "interactionLayer"
     );
 
+  const aquariumCanvas =
+    document.getElementById(
+      "aquariumLayer"
+    );
+
   const hudCanvas =
     document.getElementById(
       "hudLayer"
@@ -65,15 +74,17 @@ async function boot() {
       config
     );
 
+  const aquarium =
+    new AquariumLayer(
+      aquariumCanvas,
+      engine,
+      config
+    );
+
   const hud =
     new HudLayer(
       hudCanvas,
       engine
-    );
-
-  const gacha =
-    new GachaSystem(
-      config
     );
 
   const nervous =
@@ -87,10 +98,59 @@ async function boot() {
             );
           },
         onEmotionScored:
-          ({ emotion, total }) => {
+          ({
+            emotion,
+            total
+          }) => {
+            aquarium
+              .registerEmotionScore(
+                emotion,
+                total
+              );
+
             console.debug(
               `[nervous] ${emotion}: ${total}`
             );
+          }
+      }
+    );
+
+  const gacha =
+    new GachaSystem(
+      config,
+      {
+        chanceResolver:
+          ({
+            base,
+            context
+          }) => {
+            const bucketRows =
+              Math.max(
+                1,
+                Math.round(
+                  Number(
+                    context
+                      ?.bucketRows
+                  ) || 1
+                )
+              );
+
+            if (
+              bucketRows <
+              config.gachaUnlockBucketRows
+            ) {
+              return {
+                joy: 0,
+                rage: 0,
+                fear: 0,
+                grief: 0
+              };
+            }
+
+            return nervous
+              .getAdaptiveGachaChances(
+                base
+              );
           }
       }
     );
@@ -158,6 +218,11 @@ async function boot() {
       engine,
       {
         onRefresh: () => {
+          // First valid swipe: remove the onboarding prompt character by
+          // character. This is independent from whether the bucket has
+          // already finished draining.
+          hud.dismissNervousPrompt();
+
           engine.regenerate(
             true,
             false
@@ -182,11 +247,22 @@ async function boot() {
           },
         onSpecialCellDrained:
           ({
-            id
+            id,
+            color,
+            sourceX,
+            sourceY
           }) => {
             nervous.collectEmotion(
               id
             );
+
+            hud.addNervousEmotionBurst({
+              emotion:
+                id,
+              color,
+              sourceX,
+              sourceY
+            });
           },
         onDiscardedSlots:
           (count) => {
@@ -198,6 +274,33 @@ async function boot() {
             // If the current special cell is discarded, its terminal message
             // is discarded with it.
             hud.cancelNervousSignal();
+          },
+        onOceanOffsetChanged:
+          (offsetY) => {
+            aquarium
+              .setViewOffset(
+                offsetY
+              );
+          },
+        onFirstLoadingRowCompleted:
+          () => {
+            if (
+              progression.bucketRows === 1 &&
+              progression.completedSwipeCount <
+                progression.onboardingSwipeTarget
+            ) {
+              hud.showNervousPrompt(
+                "swipe"
+              );
+            }
+          },
+        onSwipeCycleCompleted:
+          () => {
+            // Progression 1 -> 2 is counted only after the swipe cycle has
+            // naturally finished, so all onboarding Attention is excluded
+            // from the later +100 progression baseline.
+            progression
+              .registerCompletedSwipe();
           },
         gachaSystem:
           gacha
@@ -274,6 +377,7 @@ async function boot() {
   await document.fonts?.ready;
 
   engine.start();
+  aquarium.start();
   hud.start();
   bucket.start();
 }

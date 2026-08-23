@@ -311,6 +311,17 @@ button { -webkit-touch-callout: none; }
   z-index: 1;
 }
 
+.aquarium-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
 .interaction-canvas {
   position: absolute;
   inset: 0;

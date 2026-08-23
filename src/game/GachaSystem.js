@@ -126,6 +126,42 @@ export class GachaSystem {
   getEffectiveChances(
     context = {}
   ) {
+    const unlockBucketRows =
+      Math.max(
+        1,
+        Math.round(
+          Number(
+            this.config
+              .gachaUnlockBucketRows
+          ) || 3
+        )
+      );
+
+    const currentBucketRows =
+      Math.max(
+        1,
+        Math.round(
+          Number(
+            context.bucketRows
+          ) || 1
+        )
+      );
+
+    // Onboarding:
+    // buckets 1 and 2 are guaranteed ATTENTION-only.
+    if (
+      currentBucketRows <
+      unlockBucketRows
+    ) {
+      return {
+        joy: 0,
+        rage: 0,
+        fear: 0,
+        grief: 0,
+        attention: 100
+      };
+    }
+
     const base =
       this.getBaseChances();
 

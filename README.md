@@ -1,118 +1,97 @@
-# ASCII Ocean Mobile v0.4.2
+# ASCII Ocean Mobile v0.4.18
 
-Patch de tooling para facilitar testes da mecânica de Gacha / Nervous Systems.
+Revisão de fidelidade da **criatura 2 / família beta**.
 
-## Debug reduzido
+## O problema que ainda restava
 
-Os valores abaixo continuam em `game-config.json`, mas não aparecem mais no painel:
+A fórmula já estava correta na v0.4.17, mas o renderer ainda não reproduzia duas
+características fundamentais do sketch de referência.
 
-- `coralVerticalSpacing: 1`
-- `coralHorizontalSpacing: 1`
-- `coralHeight: 35`
-- `algaeHeight: 60`
-- `bucketBounceCells: 1.6`
+### 1. Agora são usados os 10.000 pontos discretos
 
-O debug visual agora fica focado em:
+O original executa:
 
-- Tamanho do balde
-- Velocidade de enchimento
-- Velocidade de esvaziamento
-- Attention por célula
-- Multiplicador de Apetite
-- Chance JOY
-- Chance RAGE
-- Chance FEAR
-- Chance GRIEF
-- Duração célula especial
-- Decaimento nervous buffer
+```js
+for(t+=PI/240,i=1e4;i--;) a(i/295)
+```
 
-## Velocidade de enchimento
+A beta agora usa os mesmos **10.000 índices**, na mesma direção `9999 -> 0`, em
+vez de reduzir a estrutura a 900 amostras.
 
-Novo valor:
+### 2. Agora o canvas 400x400 é tratado como um viewport fixo
+
+A função possui `cos(y)/k`. Quando `k` fica muito próximo de zero, alguns pontos
+matemáticos ficam muito distantes.
+
+No p5 original esses pontos simplesmente saem do canvas de 400x400 e são
+**recortados**.
+
+Antes, o jogo colocava esses outliers no bounding box e diminuía toda a criatura
+para fazê-los caber. Isso era o principal motivo para a estrutura ficar pequena
+e indistinguível.
+
+Agora a beta usa exatamente o viewport lógico da referência:
+
+```text
+X local: -200 .. 200  (equivale ao +200 do código original)
+Y:        0 .. 400
+```
+
+O restante é naturalmente clipped pelo Canvas2D.
+
+## Fórmula
+
+A implementação continua baseada diretamente em:
+
+```js
+a=(y,d=mag(k=(5+sin(y*2-t/2)*2)*cos(i/29),e=y/7-13)-6)=>point((q=3*sin(k*2)+cos(y)/k+sin(y/25)*k*(9+4*sin(e*9-d*3+t*2)))+50*cos(c=d-t)+200,q*sin(c)+d*39)
+t=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,116);for(t+=PI/240,i=1e4;i--;)a(i/295)}//
+```
+
+A única tradução retirada é o `+200` global em X, pois o sprite local já possui
+seu próprio centro.
+
+## Stroke da referência
+
+A beta agora usa alpha equivalente a:
+
+```text
+116 / 255
+```
+
+como no `stroke(w,116)` original.
+
+## Escala
+
+Não há mais alongamento artificial horizontal ou vertical. A forma mantém
+aspect ratio 1:1 e recebe apenas um aumento uniforme moderado:
 
 ```json
-"bucketFillSpeedMultiplier": 1
+"aquariumCreatureBetaPointSamples": 10000,
+"aquariumCreatureBetaScaleMultiplier": 1.28,
+"aquariumCreatureBetaWidthMultiplier": 1.0,
+"aquariumCreatureBetaHeightMultiplier": 1.0,
+"aquariumCreatureBetaSpriteFill": 1.0,
+"aquariumCreatureBetaPointSizeMultiplier": 1.0
 ```
 
-No debug:
+## Sobre o comentário dos 10.000 pontos
 
-```text
-Velocidade de enchimento
-0.25x → 20x
-```
+Para reproduzir este sketch, a observação útil é que a geometria resulta da
+avaliação determinística das funções trigonométricas nos 10.000 pontos
+ discretos. Essa densidade realmente importa visualmente.
 
-O baseline histórico `bucketLoadingSlotDurationMs: 1000` continua no JSON. A duração efetiva é:
+As afirmações biofísicas adicionais do comentário não são necessárias para a
+implementação e não foram usadas como premissas técnicas.
 
-```text
-1000 ms / bucketFillSpeedMultiplier
-```
+## Onboarding
 
-Assim `2x` enche duas vezes mais rápido, `10x` dez vezes mais rápido etc. Não são criados timers adicionais.
-
-## Decaimento mais preciso
-
-`nervousBufferDecayPerSecond` agora usa:
-
-```text
-step = 0.001
-inputmode = decimal
-```
-
-Portanto valores como:
-
-```text
-0.1
-0.05
-0.02
-0.005
-```
-
-podem ser digitados diretamente no debug (inclusive em teclado mobile com suporte a decimal).
-
-## Botões de Nervous Buffer
-
-O rodapé do debug ganhou:
-
-```text
-BUFFER +1
-ZERAR BUFFER
-```
-
-`BUFFER +1` adiciona 1 ponto ao polo que está atualmente sendo exibido. Se chegar a 10, usa a mesma regra real: contabiliza 1 ponto daquela emoção e zera aquele eixo.
-
-Se não houver nenhum eixo ativo, o botão não cria uma emoção artificial.
-
-`ZERAR BUFFER` zera apenas o eixo atualmente exibido. Caso o outro eixo possua valor acumulado, ele passa automaticamente a ser o buffer visível.
-
-Esses botões são ferramentas de teste e não fazem parte da interação do jogador.
-
-## Fonte de verdade
-
-O `game-config.json` continua sendo a fonte de verdade ao iniciar/recarregar a aplicação. Valores ocultos do debug permanecem totalmente configuráveis por esse arquivo.
-
-## Defaults relevantes
-
-```json
-{
-  "bucketLoadingRows": 1,
-  "bucketFillSpeedMultiplier": 1,
-  "bucketDrainSpeedMultiplier": 7,
-  "attentionValuePerCell": 1,
-  "appetiteMultiplier": 50,
-  "specialCellDrainDurationMultiplier": 6,
-  "nervousBufferDecayPerSecond": 0.1
-}
-```
+A correção que rearma o `swipe` para o segundo enchimento foi preservada.
 
 ## Rodando
 
 ```bash
 npm run dev
-```
-
-Build:
-
-```bash
 npm run build
 npm run preview
 ```

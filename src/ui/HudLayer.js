@@ -18,7 +18,19 @@ const PARTICLE_GLYPHS = [
 
 const PARTICLES_PER_CELL = 3;
 const MAX_PARTICLES = 84;
+
+const NERVOUS_FRAGMENT_GLYPHS = [
+  "x",
+  "+",
+  "*",
+  "·"
+];
+
+const NERVOUS_FRAGMENTS_PER_CELL = 8;
+const MAX_NERVOUS_FRAGMENTS = 96;
+
 const SCORE_PULSE_MS = 190;
+const NERVOUS_PULSE_MS = 280;
 
 const NERVOUS_PANEL_TITLE =
   "c:\\nervous>systems";
@@ -56,6 +68,11 @@ export class HudLayer {
     this.appetitePulseMs = 0;
 
     this.particles = [];
+    this.nervousFragments = [];
+
+    this.nervousPulseMs = 0;
+    this.nervousPulseColor =
+      HUD_BAR_COLOR;
 
     this.nervousTerminal = {
       state: "idle",
@@ -65,7 +82,8 @@ export class HudLayer {
       durationMs: 0,
       cursorElapsedMs: 0,
       queue: [],
-      persistentEmotion: null
+      persistentEmotion: null,
+      promptDeleteSource: ""
     };
 
     this.nervousBuffer = {
@@ -465,6 +483,90 @@ export class HudLayer {
     }
   }
 
+  showNervousPrompt(
+    label,
+    {
+      typeDurationMs = 520
+    } = {}
+  ) {
+    const normalizedLabel =
+      String(
+        label ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      !normalizedLabel
+    ) {
+      return;
+    }
+
+    const terminal =
+      this.nervousTerminal;
+
+    terminal.state =
+      "promptTyping";
+
+    terminal.target =
+      normalizedLabel;
+
+    terminal.text =
+      "";
+
+    terminal.elapsedMs =
+      0;
+
+    terminal.durationMs =
+      Math.max(
+        120,
+        Number(
+          typeDurationMs
+        ) || 520
+      );
+
+    terminal.promptDeleteSource =
+      "";
+  }
+
+  dismissNervousPrompt(
+    {
+      durationMs = 440
+    } = {}
+  ) {
+    const terminal =
+      this.nervousTerminal;
+
+    if (
+      terminal.state !==
+        "promptTyping" &&
+      terminal.state !==
+        "prompt"
+    ) {
+      return false;
+    }
+
+    terminal.promptDeleteSource =
+      terminal.text ||
+      terminal.target;
+
+    terminal.state =
+      "promptDeleting";
+
+    terminal.elapsedMs =
+      0;
+
+    terminal.durationMs =
+      Math.max(
+        120,
+        Number(
+          durationMs
+        ) || 440
+      );
+
+    return true;
+  }
+
   announceNervousSignal({
     label,
     durationMs
@@ -589,12 +691,151 @@ export class HudLayer {
       );
 
     if (
+      terminal.state ===
+      "promptTyping"
+    ) {
+      terminal.elapsedMs +=
+        deltaMs;
+
+      const progress =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            terminal.elapsedMs /
+            Math.max(
+              1,
+              terminal.durationMs
+            )
+          )
+        );
+
+      const visibleCharacters =
+        Math.min(
+          terminal.target.length,
+          Math.floor(
+            progress *
+            (
+              terminal.target.length +
+              1
+            )
+          )
+        );
+
+      terminal.text =
+        terminal.target.slice(
+          0,
+          visibleCharacters
+        );
+
+      if (
+        progress >= 1
+      ) {
+        terminal.state =
+          "prompt";
+
+        terminal.text =
+          terminal.target;
+      }
+
+      return;
+    }
+
+    if (
+      terminal.state ===
+      "prompt"
+    ) {
+      terminal.text =
+        terminal.target;
+
+      return;
+    }
+
+    if (
+      terminal.state ===
+      "promptDeleting"
+    ) {
+      terminal.elapsedMs +=
+        deltaMs;
+
+      const progress =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            terminal.elapsedMs /
+            Math.max(
+              1,
+              terminal.durationMs
+            )
+          )
+        );
+
+      const source =
+        terminal
+          .promptDeleteSource ||
+        terminal.target;
+
+      const visibleCharacters =
+        Math.max(
+          0,
+          Math.ceil(
+            source.length *
+            (
+              1 -
+              progress
+            )
+          )
+        );
+
+      terminal.text =
+        source.slice(
+          0,
+          visibleCharacters
+        );
+
+      if (
+        progress >= 1
+      ) {
+        terminal.state =
+          "idle";
+
+        terminal.target =
+          "";
+
+        terminal.text =
+          terminal
+            .persistentEmotion ??
+          "";
+
+        terminal.elapsedMs =
+          0;
+
+        terminal.durationMs =
+          0;
+
+        terminal.promptDeleteSource =
+          "";
+
+        if (
+          terminal.queue.length >
+          0
+        ) {
+          this.startNextNervousSignal();
+        }
+      }
+
+      return;
+    }
+
+    if (
       terminal.state !== "signal"
     ) {
       terminal.text =
         terminal
           .persistentEmotion ??
         "";
+
       return;
     }
 
@@ -745,10 +986,30 @@ export class HudLayer {
       layout.height
     );
 
-    ctx.strokeStyle =
-      HUD_BAR_COLOR;
+    const nervousPulseRatio =
+      this.nervousPulseMs /
+      NERVOUS_PULSE_MS;
 
-    ctx.lineWidth = 2;
+    ctx.strokeStyle =
+      nervousPulseRatio > 0
+        ? this.nervousPulseColor
+        : HUD_BAR_COLOR;
+
+    ctx.lineWidth =
+      2 +
+      nervousPulseRatio *
+        1.4;
+
+    if (
+      nervousPulseRatio > 0
+    ) {
+      ctx.shadowColor =
+        this.nervousPulseColor;
+
+      ctx.shadowBlur =
+        nervousPulseRatio *
+        12;
+    }
 
     ctx.strokeRect(
       layout.x + 1,
@@ -824,6 +1085,388 @@ export class HudLayer {
     );
 
     ctx.restore();
+  }
+
+  addNervousEmotionBurst({
+    emotion,
+    color,
+    sourceX,
+    sourceY
+  }) {
+    if (
+      !Number.isFinite(
+        sourceX
+      ) ||
+      !Number.isFinite(
+        sourceY
+      )
+    ) {
+      return;
+    }
+
+    const fragmentColor =
+      color ||
+      this.nervousBuffer.color ||
+      HUD_BAR_COLOR;
+
+    this.nervousPulseMs =
+      NERVOUS_PULSE_MS;
+
+    this.nervousPulseColor =
+      fragmentColor;
+
+    const layout =
+      this.getNervousPanelLayout();
+
+    const targetX =
+      layout.bufferX +
+      layout.bufferWidth * 0.5;
+
+    const targetY =
+      layout.bufferY +
+      layout.bufferHeight *
+        (
+          1 -
+          Math.max(
+            0.08,
+            Math.min(
+              0.92,
+              this.nervousBuffer.ratio
+            )
+          )
+        );
+
+    for (
+      let index = 0;
+      index <
+      NERVOUS_FRAGMENTS_PER_CELL;
+      index += 1
+    ) {
+      if (
+        this.nervousFragments.length >=
+        MAX_NERVOUS_FRAGMENTS
+      ) {
+        this.nervousFragments.shift();
+      }
+
+      const angle =
+        Math.random() *
+        Math.PI *
+        2;
+
+      const burstDistance =
+        14 +
+        Math.random() *
+          26;
+
+      const burstX =
+        sourceX +
+        Math.cos(
+          angle
+        ) *
+        burstDistance;
+
+      const burstY =
+        sourceY +
+        Math.sin(
+          angle
+        ) *
+        burstDistance *
+        0.72;
+
+      this.nervousFragments.push({
+        color:
+          fragmentColor,
+
+        startX:
+          sourceX +
+          (
+            Math.random() -
+            0.5
+          ) * 5,
+
+        startY:
+          sourceY +
+          (
+            Math.random() -
+            0.5
+          ) * 5,
+
+        burstX,
+        burstY,
+
+        controlX:
+          (
+            burstX +
+            targetX
+          ) /
+          2 +
+          (
+            Math.random() -
+            0.5
+          ) * 38,
+
+        controlY:
+          Math.min(
+            burstY,
+            targetY
+          ) -
+          20 -
+          Math.random() *
+            34,
+
+        targetX:
+          targetX +
+          (
+            Math.random() -
+            0.5
+          ) * 8,
+
+        targetY:
+          targetY +
+          (
+            Math.random() -
+            0.5
+          ) * 7,
+
+        elapsed: 0,
+
+        duration:
+          520 +
+          Math.random() *
+            260,
+
+        burstRatio:
+          0.26 +
+          Math.random() *
+            0.08,
+
+        rotation:
+          Math.random() *
+          Math.PI *
+          2,
+
+        spin:
+          (
+            Math.random() -
+            0.5
+          ) * 8,
+
+        glyph:
+          NERVOUS_FRAGMENT_GLYPHS[
+            Math.floor(
+              Math.random() *
+              NERVOUS_FRAGMENT_GLYPHS.length
+            )
+          ]
+      });
+    }
+  }
+
+  updateNervousFragments(
+    deltaMs
+  ) {
+    let writeIndex = 0;
+
+    for (
+      let index = 0;
+      index <
+      this.nervousFragments.length;
+      index += 1
+    ) {
+      const fragment =
+        this.nervousFragments[
+          index
+        ];
+
+      fragment.elapsed +=
+        deltaMs;
+
+      if (
+        fragment.elapsed <
+        fragment.duration
+      ) {
+        this.nervousFragments[
+          writeIndex
+        ] = fragment;
+
+        writeIndex += 1;
+      }
+    }
+
+    this.nervousFragments.length =
+      writeIndex;
+  }
+
+  renderNervousFragments() {
+    const ctx =
+      this.ctx;
+
+    ctx.textAlign =
+      "center";
+
+    ctx.textBaseline =
+      "middle";
+
+    for (
+      const fragment
+      of this.nervousFragments
+    ) {
+      const rawT =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            fragment.elapsed /
+            fragment.duration
+          )
+        );
+
+      let x;
+      let y;
+
+      if (
+        rawT <
+        fragment.burstRatio
+      ) {
+        const localT =
+          rawT /
+          fragment.burstRatio;
+
+        const eased =
+          1 -
+          Math.pow(
+            1 -
+            localT,
+            3
+          );
+
+        x =
+          fragment.startX +
+          (
+            fragment.burstX -
+            fragment.startX
+          ) *
+          eased;
+
+        y =
+          fragment.startY +
+          (
+            fragment.burstY -
+            fragment.startY
+          ) *
+          eased;
+      } else {
+        const localT =
+          (
+            rawT -
+            fragment.burstRatio
+          ) /
+          (
+            1 -
+            fragment.burstRatio
+          );
+
+        const eased =
+          localT *
+          localT *
+          (
+            3 -
+            2 *
+              localT
+          );
+
+        const inverse =
+          1 -
+          eased;
+
+        x =
+          inverse *
+            inverse *
+            fragment.burstX +
+          2 *
+            inverse *
+            eased *
+            fragment.controlX +
+          eased *
+            eased *
+            fragment.targetX;
+
+        y =
+          inverse *
+            inverse *
+            fragment.burstY +
+          2 *
+            inverse *
+            eased *
+            fragment.controlY +
+          eased *
+            eased *
+            fragment.targetY;
+      }
+
+      const alpha =
+        rawT < 0.78
+          ? 1
+          : 1 -
+            (
+              rawT -
+              0.78
+            ) /
+            0.22;
+
+      const size =
+        13 +
+        (
+          1 -
+          rawT
+        ) * 5;
+
+      ctx.save();
+
+      ctx.translate(
+        x,
+        y
+      );
+
+      ctx.rotate(
+        fragment.rotation +
+        fragment.spin *
+          rawT
+      );
+
+      ctx.globalAlpha =
+        Math.max(
+          0,
+          alpha
+        );
+
+      ctx.fillStyle =
+        fragment.color;
+
+      ctx.shadowColor =
+        fragment.color;
+
+      ctx.shadowBlur =
+        6 +
+        (
+          1 -
+          rawT
+        ) * 4;
+
+      ctx.font =
+        `${size}px ${NORMAL_FONT}`;
+
+      ctx.fillText(
+        fragment.glyph,
+        0,
+        0
+      );
+
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = 1;
   }
 
   spawnAttentionFragments(
@@ -945,7 +1588,18 @@ export class HudLayer {
         deltaMs
       );
 
+    this.nervousPulseMs =
+      Math.max(
+        0,
+        this.nervousPulseMs -
+        deltaMs
+      );
+
     this.updateNervousTerminal(
+      deltaMs
+    );
+
+    this.updateNervousFragments(
       deltaMs
     );
 
@@ -1236,6 +1890,7 @@ export class HudLayer {
     // Particles can travel over both sea and bucket because this
     // canvas is above both visual layers.
     this.renderParticles();
+    this.renderNervousFragments();
     this.renderNervousTerminal();
     this.renderBar();
   }

@@ -1,5 +1,5 @@
 const MIN_BUCKET_ROWS = 1;
-const MAX_BUCKET_ROWS = 30;
+const MAX_BUCKET_ROWS = 10;
 
 export class ProgressionSystem {
   constructor(
@@ -12,6 +12,11 @@ export class ProgressionSystem {
     this.config = config;
 
     this.attentionTotal = 0;
+    this.completedSwipeCount = 0;
+
+    // v0.4.11:
+    // onboarding Attention now counts toward the total targets.
+    this.attentionBaseline = 0;
 
     this.onProgressionChanged =
       onProgressionChanged;
@@ -44,7 +49,18 @@ export class ProgressionSystem {
           Number(
             this.config
               .appetiteMultiplier
-          ) || 50
+          ) || 100
+        )
+      );
+
+    this.config.onboardingSwipesToBucket2 =
+      Math.max(
+        1,
+        Math.round(
+          Number(
+            this.config
+              .onboardingSwipesToBucket2
+          ) || 2
         )
       );
   }
@@ -59,9 +75,60 @@ export class ProgressionSystem {
       .appetiteMultiplier;
   }
 
-  get appetiteTarget() {
+  get onboardingSwipeTarget() {
+    return this.config
+      .onboardingSwipesToBucket2;
+  }
+
+  get isMaxBucket() {
     return (
-      this.bucketRows *
+      this.bucketRows >=
+      MAX_BUCKET_ROWS
+    );
+  }
+
+  get progressionMode() {
+    if (
+      this.isMaxBucket
+    ) {
+      return "complete";
+    }
+
+    if (
+      this.bucketRows === 1
+    ) {
+      return "swipes";
+    }
+
+    return "attention";
+  }
+
+  get attentionProgress() {
+    return Math.max(
+      0,
+      this.attentionTotal
+    );
+  }
+
+  get appetiteTarget() {
+    if (
+      this.isMaxBucket
+    ) {
+      return 0;
+    }
+
+    if (
+      this.bucketRows === 1
+    ) {
+      return this
+        .onboardingSwipeTarget;
+    }
+
+    return (
+      (
+        this.bucketRows -
+        1
+      ) *
       this.multiplier
     );
   }
@@ -75,17 +142,36 @@ export class ProgressionSystem {
     const snapshot = {
       attention:
         this.attentionTotal,
+
+      attentionBaseline:
+        this.attentionBaseline,
+
+      attentionProgress:
+        this.attentionProgress,
+
+      completedSwipes:
+        this.completedSwipeCount,
+
+      onboardingSwipeTarget:
+        this.onboardingSwipeTarget,
+
+      progressionMode:
+        this.progressionMode,
+
       bucketRows:
         this.bucketRows,
+
       appetiteTarget:
         this.appetiteTarget,
+
       appetiteMultiplier:
         this.multiplier,
+
       leveledUp,
       levelsGained,
+
       isMaxBucket:
-        this.bucketRows >=
-        MAX_BUCKET_ROWS
+        this.isMaxBucket
     };
 
     this.onProgressionChanged?.(
@@ -93,6 +179,77 @@ export class ProgressionSystem {
     );
 
     return snapshot;
+  }
+
+  emitLevelUp(
+    previousRows,
+    reachedAppetite
+  ) {
+    this.onBucketLevelUp?.(
+      {
+        previousRows,
+
+        bucketRows:
+          this.bucketRows,
+
+        reachedAppetite,
+
+        attention:
+          this.attentionTotal,
+
+        attentionProgress:
+          this.attentionProgress,
+
+        nextAppetite:
+          this.appetiteTarget,
+
+        progressionMode:
+          this.progressionMode
+      }
+    );
+  }
+
+  registerCompletedSwipe() {
+    this.normalizeRuntimeConfig();
+
+    if (
+      this.bucketRows !== 1
+    ) {
+      return this.emitProgression();
+    }
+
+    this.completedSwipeCount +=
+      1;
+
+    if (
+      this.completedSwipeCount <
+      this.onboardingSwipeTarget
+    ) {
+      return this.emitProgression();
+    }
+
+    const previousRows =
+      this.bucketRows;
+
+    const reachedAppetite =
+      this.onboardingSwipeTarget;
+
+    this.config.bucketLoadingRows =
+      2;
+
+    this.attentionBaseline = 0;
+
+    this.emitLevelUp(
+      previousRows,
+      reachedAppetite
+    );
+
+    return this.emitProgression(
+      {
+        leveledUp: true,
+        levelsGained: 1
+      }
+    );
   }
 
   syncWithAttention(
@@ -113,15 +270,20 @@ export class ProgressionSystem {
 
     this.normalizeRuntimeConfig();
 
+    if (
+      this.bucketRows === 1
+    ) {
+      return this.emitProgression();
+    }
+
     let levelsGained = 0;
 
     if (
       allowLevelUp
     ) {
       while (
-        this.bucketRows <
-          MAX_BUCKET_ROWS &&
-        this.attentionTotal >=
+        !this.isMaxBucket &&
+        this.attentionProgress >=
           this.appetiteTarget
       ) {
         const previousRows =
@@ -134,20 +296,12 @@ export class ProgressionSystem {
           .bucketLoadingRows =
           previousRows + 1;
 
-        levelsGained += 1;
+        levelsGained +=
+          1;
 
-        this.onBucketLevelUp?.(
-          {
-            previousRows,
-            bucketRows:
-              this.bucketRows,
-            reachedAppetite:
-              previousTarget,
-            attention:
-              this.attentionTotal,
-            nextAppetite:
-              this.appetiteTarget
-          }
+        this.emitLevelUp(
+          previousRows,
+          previousTarget
         );
       }
     }
@@ -156,6 +310,7 @@ export class ProgressionSystem {
       {
         leveledUp:
           levelsGained > 0,
+
         levelsGained
       }
     );
@@ -165,6 +320,17 @@ export class ProgressionSystem {
     attentionTotal =
       this.attentionTotal
   ) {
+    this.normalizeRuntimeConfig();
+
+    if (
+      this.bucketRows === 1
+    ) {
+      this.completedSwipeCount =
+        0;
+    }
+
+    this.attentionBaseline = 0;
+
     return this.syncWithAttention(
       attentionTotal,
       {

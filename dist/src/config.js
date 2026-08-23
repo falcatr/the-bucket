@@ -23,12 +23,38 @@ const REQUIRED_NUMERIC_KEYS = [
   "bucketFillSpeedMultiplier",
   "attentionValuePerCell",
   "appetiteMultiplier",
+  "onboardingSwipesToBucket2",
+  "gachaUnlockBucketRows",
   "gachaJoyChancePct",
   "gachaRageChancePct",
   "gachaFearChancePct",
   "gachaGriefChancePct",
   "specialCellDrainDurationMultiplier",
-  "nervousBufferDecayPerSecond"
+  "nervousBufferDecayPerSecond",
+  "nervousBufferBaseTarget",
+  "nervousBufferScoresPerTargetTier",
+  "nervousBufferTargetStep",
+  "gachaAdaptiveOwnBoostPctPerScore",
+  "gachaAdaptiveOppositeBoostPctPerScore",
+  "gachaAdaptiveSaturationScore",
+  "gachaAdaptiveEmotionChanceCapPct",
+  "aquariumBaseWordsPerMinute",
+  "aquariumScoreExponent",
+  "aquariumMaxWords",
+  "aquariumWordSpeedCellsPerSecond",
+  "aquariumMinDepthRatio",
+  "aquariumMaxDepthRatio",
+  "aquariumCreaturePointSamples",
+  "aquariumCreatureShapeIndex",
+  "aquariumCreatureMorphFps",
+  "aquariumCreatureSpriteSize",
+  "aquariumCreatureSizeViewportRatio",
+  "aquariumCreatureSwimSpeedCellsPerSecond",
+  "aquariumCreatureTurnSpeed",
+  "aquariumCreatureHeadingChangeSecondsMin",
+  "aquariumCreatureHeadingChangeSecondsMax",
+  "aquariumCreatureMaxHeadingChangeRadians",
+  "aquariumCreatureAlpha"
 ];
 
 export const CONTROL_DEFINITIONS =
@@ -38,7 +64,7 @@ export const CONTROL_DEFINITIONS =
         "Tamanho do balde",
       inputType: "number",
       min: 1,
-      max: 30,
+      max: 10,
       step: 1,
       suffix: " linhas",
       structural: false,
@@ -151,6 +177,17 @@ export const CONTROL_DEFINITIONS =
       suffix: " pts/s",
       structural: false,
       affectsOcean: false
+    },
+    aquariumCreatureSizeViewportRatio: {
+      label:
+        "Tamanho das creatures",
+      inputType: "number",
+      min: 0.08,
+      max: 1.20,
+      step: 0.01,
+      suffix: " view",
+      structural: false,
+      affectsOcean: false
     }
   });
 
@@ -193,8 +230,11 @@ function validateConfig(
   config.bucketLoadingRows =
     Math.max(
       1,
-      Math.round(
-        config.bucketLoadingRows
+      Math.min(
+        10,
+        Math.round(
+          config.bucketLoadingRows
+        )
       )
     );
 
@@ -211,6 +251,25 @@ function validateConfig(
       1,
       Math.round(
         config.appetiteMultiplier
+      )
+    );
+
+  config.onboardingSwipesToBucket2 =
+    Math.max(
+      1,
+      Math.round(
+        config.onboardingSwipesToBucket2
+      )
+    );
+
+  config.gachaUnlockBucketRows =
+    Math.max(
+      1,
+      Math.min(
+        10,
+        Math.round(
+          config.gachaUnlockBucketRows
+        )
       )
     );
 
@@ -259,6 +318,255 @@ function validateConfig(
       Number(
         config
           .nervousBufferDecayPerSecond
+      )
+    );
+
+  config.nervousBufferBaseTarget =
+    Math.max(
+      1,
+      Number(
+        config.nervousBufferBaseTarget
+      )
+    );
+
+  config.nervousBufferScoresPerTargetTier =
+    Math.max(
+      1,
+      Math.round(
+        Number(
+          config
+            .nervousBufferScoresPerTargetTier
+        )
+      )
+    );
+
+  config.nervousBufferTargetStep =
+    Math.max(
+      1,
+      Number(
+        config.nervousBufferTargetStep
+      )
+    );
+
+  config.gachaAdaptiveOwnBoostPctPerScore =
+    Math.max(
+      0,
+      Number(
+        config
+          .gachaAdaptiveOwnBoostPctPerScore
+      )
+    );
+
+  config.gachaAdaptiveOppositeBoostPctPerScore =
+    Math.max(
+      0,
+      Number(
+        config
+          .gachaAdaptiveOppositeBoostPctPerScore
+      )
+    );
+
+  config.gachaAdaptiveSaturationScore =
+    Math.max(
+      0.01,
+      Number(
+        config
+          .gachaAdaptiveSaturationScore
+      )
+    );
+
+  config.gachaAdaptiveEmotionChanceCapPct =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Number(
+          config
+            .gachaAdaptiveEmotionChanceCapPct
+        )
+      )
+    );
+
+  config.aquariumBaseWordsPerMinute =
+    Math.max(
+      0,
+      Number(
+        config.aquariumBaseWordsPerMinute
+      )
+    );
+
+  config.aquariumScoreExponent =
+    Math.max(
+      0.01,
+      Number(
+        config.aquariumScoreExponent
+      )
+    );
+
+  config.aquariumMaxWords =
+    Math.max(
+      1,
+      Math.round(
+        Number(
+          config.aquariumMaxWords
+        )
+      )
+    );
+
+  config.aquariumWordSpeedCellsPerSecond =
+    Math.max(
+      0.05,
+      Number(
+        config
+          .aquariumWordSpeedCellsPerSecond
+      )
+    );
+
+  config.aquariumMinDepthRatio =
+    Math.max(
+      0,
+      Math.min(
+        1,
+        Number(
+          config.aquariumMinDepthRatio
+        )
+      )
+    );
+
+  config.aquariumMaxDepthRatio =
+    Math.max(
+      config.aquariumMinDepthRatio,
+      Math.min(
+        1,
+        Number(
+          config.aquariumMaxDepthRatio
+        )
+      )
+    );
+
+  config.aquariumCreaturePointSamples =
+    Math.max(
+      200,
+      Math.min(
+        2000,
+        Math.round(
+          Number(
+            config
+              .aquariumCreaturePointSamples
+          )
+        )
+      )
+    );
+
+  config.aquariumCreatureShapeIndex =
+    Math.max(
+      0,
+      Math.min(
+        15,
+        Math.round(
+          Number(
+            config
+              .aquariumCreatureShapeIndex
+          )
+        )
+      )
+    );
+
+  config.aquariumCreatureMorphFps =
+    Math.max(
+      4,
+      Math.min(
+        30,
+        Number(
+          config
+            .aquariumCreatureMorphFps
+        )
+      )
+    );
+
+  config.aquariumCreatureSpriteSize =
+    Math.max(
+      64,
+      Math.min(
+        256,
+        Math.round(
+          Number(
+            config
+              .aquariumCreatureSpriteSize
+          )
+        )
+      )
+    );
+
+  config.aquariumCreatureSizeViewportRatio =
+    Math.max(
+      0.06,
+      Math.min(
+        1.20,
+        Number(
+          config
+            .aquariumCreatureSizeViewportRatio
+        )
+      )
+    );
+
+  config.aquariumCreatureSwimSpeedCellsPerSecond =
+    Math.max(
+      0.05,
+      Number(
+        config
+          .aquariumCreatureSwimSpeedCellsPerSecond
+      )
+    );
+
+  config.aquariumCreatureTurnSpeed =
+    Math.max(
+      0.01,
+      Number(
+        config
+          .aquariumCreatureTurnSpeed
+      )
+    );
+
+  config.aquariumCreatureHeadingChangeSecondsMin =
+    Math.max(
+      0.25,
+      Number(
+        config
+          .aquariumCreatureHeadingChangeSecondsMin
+      )
+    );
+
+  config.aquariumCreatureHeadingChangeSecondsMax =
+    Math.max(
+      config.aquariumCreatureHeadingChangeSecondsMin,
+      Number(
+        config
+          .aquariumCreatureHeadingChangeSecondsMax
+      )
+    );
+
+  config.aquariumCreatureMaxHeadingChangeRadians =
+    Math.max(
+      0.05,
+      Math.min(
+        Math.PI,
+        Number(
+          config
+            .aquariumCreatureMaxHeadingChangeRadians
+        )
+      )
+    );
+
+  config.aquariumCreatureAlpha =
+    Math.max(
+      0.05,
+      Math.min(
+        1,
+        Number(
+          config
+            .aquariumCreatureAlpha
+        )
       )
     );
 
