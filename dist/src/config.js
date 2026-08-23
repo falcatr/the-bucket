@@ -21,6 +21,9 @@ const REQUIRED_NUMERIC_KEYS = [
   "bucketBounceCells",
   "bucketLoadingSlotDurationMs",
   "bucketFillSpeedMultiplier",
+  "bucketFillSpeedAtRows4Multiplier",
+  "bucketFillSpeedAtRows7Multiplier",
+  "bucketFillSpeedAtRows10Multiplier",
   "attentionValuePerCell",
   "appetiteMultiplier",
   "onboardingSwipesToBucket2",
@@ -72,7 +75,7 @@ export const CONTROL_DEFINITIONS =
     },
     bucketFillSpeedMultiplier: {
       label:
-        "Velocidade de enchimento",
+        "Velocidade enchimento (balde 1-3)",
       inputType: "number",
       min: 0.25,
       max: 20,
@@ -309,6 +312,33 @@ function validateConfig(
       Number(
         config
           .bucketFillSpeedMultiplier
+      )
+    );
+
+  config.bucketFillSpeedAtRows4Multiplier =
+    Math.max(
+      0.01,
+      Number(
+        config
+          .bucketFillSpeedAtRows4Multiplier
+      )
+    );
+
+  config.bucketFillSpeedAtRows7Multiplier =
+    Math.max(
+      0.01,
+      Number(
+        config
+          .bucketFillSpeedAtRows7Multiplier
+      )
+    );
+
+  config.bucketFillSpeedAtRows10Multiplier =
+    Math.max(
+      0.01,
+      Number(
+        config
+          .bucketFillSpeedAtRows10Multiplier
       )
     );
 

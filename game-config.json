@@ -21,7 +21,7 @@
   "nervousBufferBaseTarget": 10,
   "nervousBufferScoresPerTargetTier": 10,
   "nervousBufferTargetStep": 10,
-  "gachaAdaptiveOwnBoostPctPerScore": 1.0,
+  "gachaAdaptiveOwnBoostPctPerScore": 1.35,
   "gachaAdaptiveOppositeBoostPctPerScore": 0.35,
   "gachaAdaptiveSaturationScore": 12,
   "gachaAdaptiveEmotionChanceCapPct": 30,
@@ -51,5 +51,8 @@
   "aquariumCreatureBetaHeightMultiplier": 1.0,
   "aquariumCreatureBetaSpriteFill": 1.0,
   "aquariumCreatureBetaPointSizeMultiplier": 1.0,
-  "aquariumCreatureBetaPointSamples": 10000
+  "aquariumCreatureBetaPointSamples": 10000,
+  "bucketFillSpeedAtRows4Multiplier": 2.2,
+  "bucketFillSpeedAtRows7Multiplier": 2.5,
+  "bucketFillSpeedAtRows10Multiplier": 3.0
 }

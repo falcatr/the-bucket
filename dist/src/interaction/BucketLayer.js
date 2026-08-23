@@ -495,17 +495,51 @@ export class BucketLayer {
   }
 
   get bucketFillSpeedMultiplier() {
-    const configured =
+    const rows =
+      this.bucketLoadingRows;
+
+    const config =
+      this.ocean.config;
+
+    let configured =
       Number(
-        this.ocean.config
+        config
           .bucketFillSpeedMultiplier
       );
+
+    if (
+      rows >= 10
+    ) {
+      configured =
+        Number(
+          config
+            .bucketFillSpeedAtRows10Multiplier
+        );
+    } else if (
+      rows >= 7
+    ) {
+      configured =
+        Number(
+          config
+            .bucketFillSpeedAtRows7Multiplier
+        );
+    } else if (
+      rows >= 4
+    ) {
+      configured =
+        Number(
+          config
+            .bucketFillSpeedAtRows4Multiplier
+        );
+    }
 
     return Math.max(
       0.01,
       Math.min(
         50,
-        Number.isFinite(configured)
+        Number.isFinite(
+          configured
+        )
           ? configured
           : 1
       )

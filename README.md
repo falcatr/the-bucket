@@ -1,92 +1,71 @@
-# ASCII Ocean Mobile v0.4.18
+# ASCII Ocean Mobile v0.4.19
 
-Revisão de fidelidade da **criatura 2 / família beta**.
+Pequeno ajuste de progressão em duas frentes:
 
-## O problema que ainda restava
+1. velocidade de enchimento aumenta conforme o tamanho do balde;
+2. o aprendizado do gacha por emoção fica mais perceptível.
 
-A fórmula já estava correta na v0.4.17, mas o renderer ainda não reproduzia duas
-características fundamentais do sketch de referência.
+## Progressão da velocidade de enchimento
 
-### 1. Agora são usados os 10.000 pontos discretos
-
-O original executa:
-
-```js
-for(t+=PI/240,i=1e4;i--;) a(i/295)
-```
-
-A beta agora usa os mesmos **10.000 índices**, na mesma direção `9999 -> 0`, em
-vez de reduzir a estrutura a 900 amostras.
-
-### 2. Agora o canvas 400x400 é tratado como um viewport fixo
-
-A função possui `cos(y)/k`. Quando `k` fica muito próximo de zero, alguns pontos
-matemáticos ficam muito distantes.
-
-No p5 original esses pontos simplesmente saem do canvas de 400x400 e são
-**recortados**.
-
-Antes, o jogo colocava esses outliers no bounding box e diminuía toda a criatura
-para fazê-los caber. Isso era o principal motivo para a estrutura ficar pequena
-e indistinguível.
-
-Agora a beta usa exatamente o viewport lógico da referência:
+A velocidade agora é resolvida automaticamente pelo tamanho atual do balde:
 
 ```text
-X local: -200 .. 200  (equivale ao +200 do código original)
-Y:        0 .. 400
+balde 1-3  -> 1.8x
+balde 4-6  -> 2.2x
+balde 7-9  -> 2.5x
+balde 10   -> 3.0x
 ```
 
-O restante é naturalmente clipped pelo Canvas2D.
-
-## Fórmula
-
-A implementação continua baseada diretamente em:
-
-```js
-a=(y,d=mag(k=(5+sin(y*2-t/2)*2)*cos(i/29),e=y/7-13)-6)=>point((q=3*sin(k*2)+cos(y)/k+sin(y/25)*k*(9+4*sin(e*9-d*3+t*2)))+50*cos(c=d-t)+200,q*sin(c)+d*39)
-t=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,116);for(t+=PI/240,i=1e4;i--;)a(i/295)}//
-```
-
-A única tradução retirada é o `+200` global em X, pois o sprite local já possui
-seu próprio centro.
-
-## Stroke da referência
-
-A beta agora usa alpha equivalente a:
-
-```text
-116 / 255
-```
-
-como no `stroke(w,116)` original.
-
-## Escala
-
-Não há mais alongamento artificial horizontal ou vertical. A forma mantém
-aspect ratio 1:1 e recebe apenas um aumento uniforme moderado:
+Novas chaves no `game-config.json`:
 
 ```json
-"aquariumCreatureBetaPointSamples": 10000,
-"aquariumCreatureBetaScaleMultiplier": 1.28,
-"aquariumCreatureBetaWidthMultiplier": 1.0,
-"aquariumCreatureBetaHeightMultiplier": 1.0,
-"aquariumCreatureBetaSpriteFill": 1.0,
-"aquariumCreatureBetaPointSizeMultiplier": 1.0
+"bucketFillSpeedMultiplier": 1.8,
+"bucketFillSpeedAtRows4Multiplier": 2.2,
+"bucketFillSpeedAtRows7Multiplier": 2.5,
+"bucketFillSpeedAtRows10Multiplier": 3.0
 ```
 
-## Sobre o comentário dos 10.000 pontos
+O controle existente do debug foi renomeado para deixar claro que ele representa
+somente o tier inicial:
 
-Para reproduzir este sketch, a observação útil é que a geometria resulta da
-avaliação determinística das funções trigonométricas nos 10.000 pontos
- discretos. Essa densidade realmente importa visualmente.
+```text
+Velocidade enchimento (balde 1-3)
+```
 
-As afirmações biofísicas adicionais do comentário não são necessárias para a
-implementação e não foram usadas como premissas técnicas.
+Os tiers 4, 7 e 10 continuam configuráveis diretamente pelo JSON.
 
-## Onboarding
+## Gacha adaptativo mais perceptível
 
-A correção que rearma o `swipe` para o segundo enchimento foi preservada.
+O boost da mesma emoção foi aumentado de:
+
+```text
+1.00 -> 1.35
+```
+
+por score efetivo.
+
+Configuração:
+
+```json
+"gachaAdaptiveOwnBoostPctPerScore": 1.35,
+"gachaAdaptiveOppositeBoostPctPerScore": 0.35,
+"gachaAdaptiveSaturationScore": 12,
+"gachaAdaptiveEmotionChanceCapPct": 30
+```
+
+### Por que isso não canibaliza diretamente as outras células especiais
+
+O sistema continua trabalhando com **porcentagens absolutas aditivas**.
+
+Completar Rage, por exemplo:
+
+- aumenta mais claramente a chance futura de Rage;
+- o pequeno reforço existente de Fear continua igual;
+- Joy e Grief mantêm suas chances-base;
+- nenhuma chance especial é subtraída diretamente para pagar o boost de Rage.
+
+O cap individual continua em 30%, e os diminishing returns continuam ativos por
+meio de `gachaAdaptiveSaturationScore = 12`, evitando crescimento explosivo.
 
 ## Rodando
 
