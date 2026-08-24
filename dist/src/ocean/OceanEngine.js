@@ -27,6 +27,7 @@ const MAX_STATIC_GLYPHS = 7800;
 // pull can expose roughly half a screen of animated upper water.
 const UPPER_REVEAL_VIEWPORT_RATIO = 0.58;
 const SURFACE_HIDDEN_MARGIN_CELLS = 1.5;
+const SURFACE_DIVIDER_VISUAL_ROWS = 3;
 const SURFACE_BASE_PHASE_PER_MS = 0.00065;
 const REFLECTION_GLYPHS = ["=", "_", "~", ":", "·", "."];
 
@@ -215,6 +216,10 @@ export class OceanEngine {
 
     const reflectionBottom =
       surfaceBoundaryRow -
+      (
+        SURFACE_DIVIDER_VISUAL_ROWS -
+        1
+      ) -
       0.60;
 
     const availableReflectionRows =
@@ -1571,64 +1576,88 @@ export class OceanEngine {
     // ---------------------------------------------------------------
     // ORGANIC WATERLINE / OCEAN SURFACE
     // ---------------------------------------------------------------
-    // This is the only divider that remains. It marks the actual point
-    // where the bucket leaves the underwater area during the pull.
+    // Gameplay geometry remains unchanged. The original divider row stays
+    // exactly at surfaceBoundaryRow; the two extra visual rows extend upward
+    // into the surface area. BucketLayer therefore keeps the same swipe and
+    // underwater-loading threshold as before.
     for (
-      let col = 0;
-      col < this.cols;
-      col += 1
+      let dividerRow = 0;
+      dividerRow <
+      SURFACE_DIVIDER_VISUAL_ROWS;
+      dividerRow += 1
     ) {
-      const phase =
-        phaseTime +
-        col * 0.46 +
-        this.surfacePhase;
+      for (
+        let col = 0;
+        col < this.cols;
+        col += 1
+      ) {
+        const rowPhase =
+          dividerRow *
+          0.73;
 
-      const shimmer =
-        (
-          Math.sin(phase) +
-          1
-        ) / 2;
+        const phase =
+          phaseTime +
+          col * 0.46 +
+          this.surfacePhase +
+          rowPhase;
 
-      const secondShimmer =
-        (
+        const shimmer =
+          (
+            Math.sin(phase) +
+            1
+          ) / 2;
+
+        const secondShimmer =
+          (
+            Math.sin(
+              phase * 0.47 +
+              col * 0.19 +
+              dividerRow * 0.31
+            ) +
+            1
+          ) / 2;
+
+        const combined =
+          shimmer * 0.68 +
+          secondShimmer * 0.32;
+
+        const glyph =
+          combined > 0.72
+            ? "~"
+            : combined > 0.40
+              ? "="
+              : "_";
+
+        const y =
+          surfaceBoundaryRow -
+          dividerRow +
           Math.sin(
-            phase * 0.47 +
-            col * 0.19
-          ) +
-          1
-        ) / 2;
+            phase * 0.58
+          ) *
+          0.055;
 
-      const combined =
-        shimmer * 0.68 +
-        secondShimmer * 0.32;
+        const rowStrength =
+          1 -
+          dividerRow *
+          0.10;
 
-      const glyph =
-        combined > 0.72
-          ? "~"
-          : combined > 0.40
-            ? "="
-            : "_";
-
-      const y =
-        surfaceBoundaryRow +
-        Math.sin(
-          phase * 0.58
-        ) *
-        0.055;
-
-      this.drawCellGlyph(
-        ctx,
-        glyph,
-        col,
-        y,
-        combined > 0.74
-          ? PALETTE.paleCyan
-          : PALETTE.cyan,
-        0.52 +
-          combined * 0.28,
-        0.70,
-        false
-      );
+        this.drawCellGlyph(
+          ctx,
+          glyph,
+          col,
+          y,
+          combined > 0.74
+            ? PALETTE.paleCyan
+            : PALETTE.cyan,
+          (
+            0.52 +
+            combined * 0.28
+          ) *
+            rowStrength,
+          0.70,
+          false
+        );
+      }
     }
   }
 

@@ -28,6 +28,47 @@
         class="hud-canvas"
         aria-label="HUD fixo com Attention e Apetite"
       ></canvas>
+      <canvas
+        id="entropyLayer"
+        class="entropy-canvas"
+        aria-label="Camada visual de Entropy e glitch progressivo"
+      ></canvas>
+
+      <div
+        id="entityOverlay"
+        class="entity-overlay"
+        hidden
+        role="presentation"
+      >
+        <section
+          class="entity-terminal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="entityTitle"
+          aria-describedby="entityMessage"
+          tabindex="-1"
+        >
+          <div
+            id="entityTitle"
+            class="entity-terminal__title"
+          >c:\entity</div>
+          <p
+            id="entityMessage"
+            class="entity-terminal__message"
+          >Congratulations! You become a channel through wich now communicative capitalism circulates and proliferates.</p>
+          <div
+            class="entity-terminal__cursor"
+            aria-hidden="true"
+          >█</div>
+        </section>
+      </div>
+
+      <canvas
+        id="meltdownLayer"
+        class="meltdown-canvas"
+        hidden
+        aria-label="Animação final eterna de meltdown tipográfico"
+      ></canvas>
 
       <div class="top-actions" aria-label="Controles da aplicação">
         <button id="fullscreenToggle" class="icon-button" type="button" aria-label="Entrar em tela cheia" title="Tela cheia">⛶</button>
@@ -45,6 +86,27 @@
           <button class="debug-button debug-button--secondary" id="resetNervousBuffer" type="button">ZERAR BUFFER</button>
           <button class="debug-button debug-button--secondary" id="refreshView" type="button">ATUALIZAR</button>
           <button class="debug-button" id="newVariation" type="button">NOVA VARIAÇÃO</button>
+        </div>
+        <div class="debug-panel__entropy">
+          <div class="debug-control">
+            <div class="debug-control__label-row">
+              <label for="entropyDecayPerSecond">Velocidade redução ENTROPY</label>
+              <output id="entropyDecayPerSecondValue" for="entropyDecayPerSecond"></output>
+            </div>
+            <input
+              class="debug-number"
+              id="entropyDecayPerSecond"
+              type="number"
+              min="0.1"
+              max="500"
+              step="0.1"
+              inputmode="decimal"
+              value="10"
+            />
+          </div>
+          <button class="debug-button debug-button--entropy" id="startEntropy" type="button">
+            INICIAR ENTROPIA
+          </button>
         </div>
       </aside>
 

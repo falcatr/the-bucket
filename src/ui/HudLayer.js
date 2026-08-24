@@ -64,6 +64,9 @@ export class HudLayer {
 
     this.appetite = 0;
 
+    this.progressionOverride =
+      null;
+
     this.attentionPulseMs = 0;
     this.appetitePulseMs = 0;
 
@@ -247,6 +250,8 @@ export class HudLayer {
       "ATTENTION";
 
     const appetiteLabel =
+      this.progressionOverride
+        ?.label ??
       "APETITE";
 
     const attentionValue =
@@ -256,6 +261,8 @@ export class HudLayer {
 
     const appetiteValue =
       this.formatScore(
+        this.progressionOverride
+          ?.value ??
         this.appetite
       );
 
@@ -444,6 +451,43 @@ export class HudLayer {
       this.appetitePulseMs =
         SCORE_PULSE_MS;
     }
+  }
+
+  setProgressionOverride(
+    label,
+    value
+  ) {
+    const normalizedLabel =
+      String(
+        label ?? ""
+      )
+        .trim()
+        .toUpperCase();
+
+    if (
+      !normalizedLabel
+    ) {
+      return;
+    }
+
+    this.progressionOverride = {
+      label:
+        normalizedLabel,
+      value:
+        Math.max(
+          0,
+          Math.floor(
+            Number(
+              value
+            ) || 0
+          )
+        )
+    };
+  }
+
+  clearProgressionOverride() {
+    this.progressionOverride =
+      null;
   }
 
   addAttention({

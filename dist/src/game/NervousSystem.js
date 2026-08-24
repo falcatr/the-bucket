@@ -737,6 +737,53 @@ export class NervousSystem {
         );
     }
 
+    // Short-term feedback loop:
+    // if the c:\nervous>systems buffer is visibly filling with an
+    // emotion, that SAME emotion receives an extra additive chance while
+    // future bucket rows are rolled. The display state is the source of
+    // truth, so the boost always follows the colored buffer the player sees.
+    //
+    // Example with the current default:
+    // RAGE buffer active -> +10 absolute percentage points to RAGE.
+    // Completing/cancelling/decaying that visible buffer removes the boost.
+    const activeBuffer =
+      this.getDisplayState();
+
+    const activeBufferBoost =
+      Math.max(
+        0,
+        Number(
+          this.config
+            .gachaActiveBufferBoostPct
+        ) || 0
+      );
+
+    if (
+      activeBuffer.emotion &&
+      activeBuffer.value >
+        EPSILON &&
+      activeBufferBoost > 0
+    ) {
+      const emotion =
+        activeBuffer.emotion;
+
+      result[
+        emotion
+      ] =
+        Math.min(
+          chanceCap,
+          Math.max(
+            0,
+            Number(
+              result[
+                emotion
+              ]
+            ) || 0
+          ) +
+            activeBufferBoost
+        );
+    }
+
     return result;
   }
 

@@ -27,8 +27,24 @@ import {
 } from "./game/NervousSystem.js";
 
 import {
+  EntropySystem
+} from "./game/EntropySystem.js";
+
+import {
   HudLayer
 } from "./ui/HudLayer.js";
+
+import {
+  EntropyLayer
+} from "./ui/EntropyLayer.js";
+
+import {
+  MeltdownLayer
+} from "./ui/MeltdownLayer.js";
+
+import {
+  FinaleController
+} from "./ui/FinaleController.js";
 
 import {
   AquariumLayer
@@ -68,6 +84,31 @@ async function boot() {
       "hudLayer"
     );
 
+  const entropyCanvas =
+    document.getElementById(
+      "entropyLayer"
+    );
+
+  const entityOverlay =
+    document.getElementById(
+      "entityOverlay"
+    );
+
+  const entityPanel =
+    entityOverlay.querySelector(
+      ".entity-terminal"
+    );
+
+  const meltdownCanvas =
+    document.getElementById(
+      "meltdownLayer"
+    );
+
+  const debugPanel =
+    document.getElementById(
+      "debugPanel"
+    );
+
   const engine =
     new OceanEngine(
       oceanCanvas,
@@ -86,6 +127,145 @@ async function boot() {
       hudCanvas,
       engine
     );
+
+  const entropyLayer =
+    new EntropyLayer(
+      entropyCanvas,
+      [
+        oceanCanvas,
+        aquariumCanvas,
+        interactionCanvas,
+        hudCanvas
+      ],
+      config
+    );
+
+  const meltdownLayer =
+    new MeltdownLayer(
+      meltdownCanvas
+    );
+
+  let bucket =
+    null;
+
+  let gameTerminated =
+    false;
+
+  const terminateGameForMeltdown =
+    () => {
+      if (
+        gameTerminated
+      ) {
+        return;
+      }
+
+      gameTerminated =
+        true;
+
+      // The Congratulations input is the real end of the game. Stop every
+      // lower animation loop; Meltdown is the only system that keeps running.
+      bucket?.destroy();
+      entropyLayer.destroy();
+      hud.destroy();
+      aquarium.destroy();
+      engine.destroy();
+
+      for (
+        const layer
+        of [
+          oceanCanvas,
+          aquariumCanvas,
+          interactionCanvas,
+          hudCanvas,
+          entropyCanvas
+        ]
+      ) {
+        layer.hidden =
+          true;
+      }
+
+      if (
+        debugPanel
+      ) {
+        debugPanel.hidden =
+          true;
+      }
+    };
+
+  const finale =
+    new FinaleController(
+      entityOverlay,
+      entityPanel,
+      meltdownLayer,
+      {
+        onLockInput:
+          () => {
+            bucket?.setInputEnabled(
+              false
+            );
+          },
+        onMeltdownStart:
+          () => {
+            terminateGameForMeltdown();
+          }
+      }
+    );
+
+  const entropy =
+    new EntropySystem(
+      config,
+      {
+        onDisplayChanged:
+          ({
+            label,
+            value
+          }) => {
+            hud.setProgressionOverride(
+              label,
+              value
+            );
+          },
+        onStateChanged:
+          (state) => {
+            entropyLayer.setState(
+              state
+            );
+          },
+        onStarted:
+          ({
+            source
+          }) => {
+            console.debug(
+              `[entropy] started: ${source}`
+            );
+          },
+        onCompleted:
+          () => {
+            console.debug(
+              "[entropy] reached zero"
+            );
+
+            finale.showEntity();
+          }
+      }
+    );
+
+  const startEntropy =
+    (
+      source,
+      {
+        restart = false
+      } = {}
+    ) => {
+      return entropy.start(
+        source,
+        {
+          restart,
+          startValue:
+            hud.appetite
+        }
+      );
+    };
 
   const nervous =
     new NervousSystem(
@@ -107,6 +287,14 @@ async function boot() {
                 emotion,
                 total
               );
+
+            if (
+              total >= 3
+            ) {
+              startEntropy(
+                `buffer-${emotion}-3`
+              );
+            }
 
             console.debug(
               `[nervous] ${emotion}: ${total}`
@@ -160,6 +348,10 @@ async function boot() {
       nervous.update(
         deltaMs
       );
+
+      entropy.update(
+        deltaMs
+      );
     }
   );
 
@@ -172,7 +364,8 @@ async function boot() {
         onProgressionChanged:
           ({
             appetiteTarget,
-            leveledUp
+            leveledUp,
+            bucketRows
           }) => {
             hud.setAppetite(
               appetiteTarget,
@@ -181,6 +374,14 @@ async function boot() {
                   leveledUp
               }
             );
+
+            if (
+              bucketRows >= 10
+            ) {
+              startEntropy(
+                "bucket-10"
+              );
+            }
           }
       }
     );
@@ -212,7 +413,7 @@ async function boot() {
       }
     );
 
-  const bucket =
+  bucket =
     new BucketLayer(
       interactionCanvas,
       engine,
@@ -333,6 +534,15 @@ async function boot() {
       () => {
         nervous.resetActiveBuffer();
       },
+    onStartEntropy:
+      () => {
+        startEntropy(
+          "debug",
+          {
+            restart: true
+          }
+        );
+      },
     onConfigChanged:
       (
         key
@@ -364,6 +574,12 @@ async function boot() {
     "keydown",
     (event) => {
       if (
+        finale.active
+      ) {
+        return;
+      }
+
+      if (
         event.code === "Space"
       ) {
         event.preventDefault();
@@ -379,6 +595,8 @@ async function boot() {
   engine.start();
   aquarium.start();
   hud.start();
+  entropyLayer.start();
+  meltdownLayer.start();
   bucket.start();
 }
 

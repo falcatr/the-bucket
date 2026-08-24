@@ -1,76 +1,1018 @@
-# ASCII Ocean Mobile v0.4.19
+# ASCII Ocean Mobile v0.6.1
 
-Pequeno ajuste de progressão em duas frentes:
+Mobile-first procedural ASCII ocean game/prototype built with
+**Canvas 2D + JavaScript modules**.
 
-1. velocidade de enchimento aumenta conforme o tamanho do balde;
-2. o aprendizado do gacha por emoção fica mais perceptível.
+This README consolidates the current project state through the entire
+`v0.5.x` cycle and the first `v0.6.x` polish release. The previous
+consolidated documentation stopped at `v0.4.19`.
 
-## Progressão da velocidade de enchimento
+---
 
-A velocidade agora é resolvida automaticamente pelo tamanho atual do balde:
+## Running the project
 
-```text
-balde 1-3  -> 1.8x
-balde 4-6  -> 2.2x
-balde 7-9  -> 2.5x
-balde 10   -> 3.0x
-```
-
-Novas chaves no `game-config.json`:
-
-```json
-"bucketFillSpeedMultiplier": 1.8,
-"bucketFillSpeedAtRows4Multiplier": 2.2,
-"bucketFillSpeedAtRows7Multiplier": 2.5,
-"bucketFillSpeedAtRows10Multiplier": 3.0
-```
-
-O controle existente do debug foi renomeado para deixar claro que ele representa
-somente o tier inicial:
-
-```text
-Velocidade enchimento (balde 1-3)
-```
-
-Os tiers 4, 7 e 10 continuam configuráveis diretamente pelo JSON.
-
-## Gacha adaptativo mais perceptível
-
-O boost da mesma emoção foi aumentado de:
-
-```text
-1.00 -> 1.35
-```
-
-por score efetivo.
-
-Configuração:
-
-```json
-"gachaAdaptiveOwnBoostPctPerScore": 1.35,
-"gachaAdaptiveOppositeBoostPctPerScore": 0.35,
-"gachaAdaptiveSaturationScore": 12,
-"gachaAdaptiveEmotionChanceCapPct": 30
-```
-
-### Por que isso não canibaliza diretamente as outras células especiais
-
-O sistema continua trabalhando com **porcentagens absolutas aditivas**.
-
-Completar Rage, por exemplo:
-
-- aumenta mais claramente a chance futura de Rage;
-- o pequeno reforço existente de Fear continua igual;
-- Joy e Grief mantêm suas chances-base;
-- nenhuma chance especial é subtraída diretamente para pagar o boost de Rage.
-
-O cap individual continua em 30%, e os diminishing returns continuam ativos por
-meio de `gachaAdaptiveSaturationScore = 12`, evitando crescimento explosivo.
-
-## Rodando
+Development server:
 
 ```bash
 npm run dev
+```
+
+Default URL:
+
+```text
+http://localhost:4173
+```
+
+Production build:
+
+```bash
 npm run build
 npm run preview
 ```
+
+Do not open `dist/index.html` directly with `file://`; ES modules and
+configuration fetches can be restricted by the browser.
+
+---
+
+# Current game loop
+
+The game is built around a bucket that the player pulls out of an ASCII
+ocean.
+
+```text
+ocean
+  ↓
+bucket fills underwater
+  ↓
+player swipes/pulls bucket above surface
+  ↓
+valid release generates a new ocean seed
+  ↓
+bucket drains
+  ↓
+ATTENTION and special emotion cells are processed
+  ↓
+APETITE / nervous buffers progress
+  ↓
+larger bucket + creatures + aquarium consequences
+  ↓
+ENTROPY
+  ↓
+c:\entity
+  ↓
+eternal Meltdown
+```
+
+---
+
+# Rendering / scene architecture
+
+The playable scene uses several independent canvases/layers:
+
+```text
+OceanEngine       ocean + reef + hidden surface extension
+AquariumLayer     persistent words + completed-buffer creatures
+BucketLayer       bucket + input
+HudLayer          ATTENTION / APETITE + c:\nervous>systems
+EntropyLayer      fullscreen corruption above gameplay/HUD
+Entity overlay    final congratulations terminal
+MeltdownLayer     final fullscreen console matrix
+```
+
+The important surface invariant is that the water above the viewport is
+part of the **same tall ocean canvas**. Pulling the ocean down reveals a
+hidden continuation of that scene instead of switching to a second
+background.
+
+The project is portrait-mobile-first but remains usable on desktop. The
+normal game is centered on desktop; the final Meltdown deliberately
+takes over the complete browser viewport.
+
+---
+
+# Ocean / surface
+
+The ocean is a fixed logical character grid rendered with pixel-style
+fonts.
+
+Current visual behavior includes:
+
+- procedural reef per seed;
+- coral types such as pillar, mound, fan and shelf;
+- independently animated algae;
+- subtle reef crawlers;
+- bubbles / fish / underwater glyph motion;
+- hidden upper water extension;
+- broken cyan surface reflections;
+- continuous water background during small pulls;
+- no skyline or separate surface scene.
+
+Reef geometry is intentionally mostly static. Background crawlers and
+algae provide most of the environmental motion.
+
+## Surface divider
+
+Since `v0.6.1`, the visual waterline/divider uses **3 glyph rows**
+instead of one.
+
+The original gameplay boundary has not moved. The two extra rows are
+drawn upward into the surface area, so:
+
+```text
+visual thickness  1 row -> 3 rows
+swipe height      unchanged
+loading geometry  unchanged
+```
+
+`OceanEngine.getSurfaceBoundaryWorldRow()` remains the single source of
+truth for the bucket's underwater/refresh calculations.
+
+---
+
+# Bucket interaction
+
+The bucket fills only while its reference rim is underwater.
+
+The exact same geometry is used both for:
+
+1. deciding whether loading is allowed;
+2. deciding whether the refresh/swipe release is valid.
+
+If the bucket is dragged above the water before releasing:
+
+```text
+loading freezes
+```
+
+If the player lowers it back underwater while still holding:
+
+```text
+loading resumes from the same point
+```
+
+A valid refresh requires at least **one fully completed row**.
+
+On a valid release:
+
+- a new ocean seed is generated immediately;
+- any incomplete yellow row is discarded;
+- completed rows are preserved for draining;
+- the ocean returns partway and exposes a small amount of the upper
+  surface while `IDLE-SWIPE` drains;
+- after draining, the ocean returns completely and a new loading cycle
+  begins.
+
+---
+
+# Dynamic bucket size
+
+Bucket capacity ranges from:
+
+```text
+1 → 10 rows
+```
+
+Capacity `1–3` preserves the original three-row silhouette.
+
+For capacities above `3`, the bucket physically grows downward while
+keeping its top/rim anchored, so the refresh geometry does not change.
+
+The capacity used during an active drain is frozen at release time.
+Progression changes apply to the next loading cycle.
+
+---
+
+# Progressive filling speed
+
+Filling becomes faster as the bucket grows:
+
+```text
+rows 1–3   1.8x
+rows 4–6   2.2x
+rows 7–9   2.5x
+row 10     3.0x
+```
+
+Configuration:
+
+```json
+{
+  "bucketFillSpeedMultiplier": 1.8,
+  "bucketFillSpeedAtRows4Multiplier": 2.2,
+  "bucketFillSpeedAtRows7Multiplier": 2.5,
+  "bucketFillSpeedAtRows10Multiplier": 3.0
+}
+```
+
+---
+
+# Drain architecture
+
+A drain cycle builds one small timeline when the swipe is accepted.
+
+There are no per-cell timers.
+
+Each cell stores:
+
+```text
+row / slot
+cell type
+start time
+duration
+end time
+```
+
+One animation loop derives visual state from elapsed time. This avoids
+callback/timer backlogs and keeps behavior deterministic after skipped
+frames.
+
+Normal default drain speed:
+
+```text
+7x
+```
+
+Special cells currently take:
+
+```text
+normal duration × 6
+```
+
+---
+
+# Double-tap discard
+
+During `IDLE-SWIPE` / drain, two quick taps discard all remaining cells.
+
+Remaining cells briefly become yellow `X` glyphs before disappearing.
+
+Discarded cells:
+
+- do not grant ATTENTION;
+- do not fill nervous buffers;
+- do not count as completed onboarding swipes;
+- cancel a currently typing nervous terminal signal.
+
+Already-earned rewards from cells drained before the discard remain.
+
+---
+
+# ATTENTION
+
+White cells represent `ATTENTION`.
+
+ATTENTION is awarded only when a white cell is completely removed during
+a normal drain.
+
+Default value:
+
+```json
+{
+  "attentionValuePerCell": 1
+}
+```
+
+White-cell drain stages:
+
+```text
+█ → ▓ → ▒ → ░ → ≡ → empty
+```
+
+When the score is earned, small fragments travel toward the ATTENTION
+counter in the bottom HUD.
+
+---
+
+# APETITE / progression
+
+The bottom HUD tracks `ATTENTION` and `APETITE`.
+
+Initial bucket:
+
+```text
+size 1
+```
+
+Bucket `1 → 2` is an onboarding exception:
+
+```text
+exactly 2 natural completed swipes
+```
+
+Discards do not count.
+
+From bucket `2` onward, progression uses cumulative ATTENTION:
+
+```text
+2 → 3   ATTENTION 100
+3 → 4   ATTENTION 200
+4 → 5   ATTENTION 300
+...
+9 → 10  ATTENTION 800
+```
+
+At bucket `10`, APETITE reaches:
+
+```text
+APETITE 0000
+```
+
+---
+
+# Special cells / gacha
+
+Cell types:
+
+```text
+ATTENTION  white
+JOY        yellow
+RAGE       red
+FEAR       green
+GRIEF      blue
+```
+
+During row loading **all cells remain yellow**.
+
+The gacha is rolled only when the complete 13-slot row finishes.
+Therefore an incomplete row never reveals which future cells would have
+been special.
+
+The resolved row is frozen and cannot reroll after configuration or
+progression changes.
+
+## Onboarding lock
+
+Special cells are disabled before bucket size `3`:
+
+```json
+{
+  "gachaUnlockBucketRows": 3
+}
+```
+
+Bucket sizes `1` and `2` are therefore ATTENTION-only.
+
+## Base special chances
+
+Current defaults:
+
+```text
+JOY    5%
+RAGE   5%
+FEAR   5%
+GRIEF  5%
+```
+
+ATTENTION receives the remaining probability.
+
+If configured special chances exceed 100%, their relative weights are
+normalized into a 100% special pool.
+
+---
+
+# Adaptive emotion gacha
+
+Completed emotion buffers influence future gacha probability.
+
+Same-emotion engagement gets the strongest long-term reinforcement.
+Its opposite emotion receives a smaller reinforcement.
+
+Opposite pairs:
+
+```text
+JOY  ↔ GRIEF
+RAGE ↔ FEAR
+```
+
+Long-term defaults:
+
+```json
+{
+  "gachaAdaptiveOwnBoostPctPerScore": 1.35,
+  "gachaAdaptiveOppositeBoostPctPerScore": 0.35,
+  "gachaAdaptiveSaturationScore": 12,
+  "gachaAdaptiveEmotionChanceCapPct": 30
+}
+```
+
+The score contribution uses diminishing returns:
+
+```text
+effectiveScore = saturation × (1 - exp(-score / saturation))
+```
+
+Unrelated emotion chances remain at their base/adaptive value rather
+than being directly penalized.
+
+---
+
+# NEW in v0.6.0 — active nervous-buffer gacha feedback
+
+The currently visible colored buffer in `c:\nervous>systems` now also
+influences the next bucket rows.
+
+Example:
+
+```text
+RAGE buffer is currently filling in red
+           ↓
+RAGE receives an extra +5 percentage points
+on newly completed bucket-row rolls
+           ↓
+easier to continue filling RAGE
+```
+
+Configuration:
+
+```json
+{
+  "gachaActiveBufferBoostPct": 5
+}
+```
+
+This is an **additive absolute percentage boost**, not a multiplier.
+
+The boost:
+
+- applies only to the emotion currently shown in the nervous buffer;
+- follows the exact display state the player sees;
+- disappears when that visible buffer returns to zero;
+- switches automatically if another axis becomes the dominant visible
+  buffer;
+- is still limited by `gachaAdaptiveEmotionChanceCapPct`;
+- never bypasses the bucket-1/bucket-2 onboarding lock;
+- affects only rows rolled after the state changed, because completed
+  rows remain frozen.
+
+This creates a short-term positive-feedback loop on top of the existing
+long-term score-based adaptive system.
+
+---
+
+# Nervous system / emotion buffers
+
+`c:\nervous>systems` is the compact terminal in the upper-left corner.
+
+It contains two signed axes:
+
+```text
+X axis   JOY +  ↔  GRIEF -
+Y axis   RAGE + ↔  FEAR  -
+```
+
+A special cell that finishes draining contributes `1` unit to its axis.
+The opposite emotion subtracts directly from that same axis and can cross
+through zero.
+
+The terminal displays whichever axis has the greatest absolute value.
+On exact ties, it preserves the currently displayed axis to avoid visual
+flicker.
+
+Default continuous decay:
+
+```json
+{
+  "nervousBufferDecayPerSecond": 0.05
+}
+```
+
+## Buffer targets
+
+Initial target:
+
+```text
+10
+```
+
+Target increases every 10 completed buffers:
+
+```text
+score 0–9    target 10
+score 10–19  target 20
+score 20–29  target 30
+...
+```
+
+When a target is completed:
+
+- that emotion score increases by `1`;
+- its complete axis is consumed/reset to zero;
+- the other axis is preserved;
+- Aquarium consequences are created.
+
+---
+
+# Nervous terminal signaling
+
+A special emotion is typed into `c:\nervous>systems` when its drain
+starts.
+
+The actual nervous-buffer value changes only when that special cell
+finishes draining.
+
+Special completion also creates colored fragments that travel toward the
+nervous terminal.
+
+During the initial bucket onboarding, the terminal displays:
+
+```text
+swipe
+```
+
+after the first completed loading row of the first and second bucket-1
+cycles. Once bucket size reaches `2`, the onboarding prompt never appears
+again.
+
+---
+
+# Aquarium words
+
+Completing nervous buffers creates persistent consequences in a separate
+Aquarium layer.
+
+Emotion words:
+
+- are lowercase;
+- use translated/emotion-related vocabulary;
+- start appearing only after an emotion has at least one completed
+  buffer;
+- become more frequent as that emotion score increases.
+
+Current baseline:
+
+```json
+{
+  "aquariumBaseWordsPerMinute": 1.5,
+  "aquariumScoreExponent": 0.8,
+  "aquariumMaxWords": 32,
+  "aquariumWordSpeedCellsPerSecond": 2.2
+}
+```
+
+The Aquarium layer follows the ocean's pull spatially but its contents are
+persistent and are not regenerated when the ocean seed changes.
+
+---
+
+# Procedural Aquarium creatures
+
+Each completed emotional buffer creates exactly **one persistent
+creature** in the corresponding emotion color.
+
+Per emotion:
+
+```text
+score 1  alpha
+score 2  alpha
+score 3  beta
+score 4  alpha
+score 5  alpha
+score 6  beta
+...
+```
+
+In other words, every third creature for the same emotion is a beta
+creature.
+
+## Alpha family
+
+Alpha uses the deterministic trigonometric point formula introduced
+during the `v0.4.x` Aquarium work.
+
+Default alpha point samples:
+
+```text
+900
+```
+
+## Beta family
+
+Beta uses the deterministic 10,000-point formula adopted before
+`v0.4.19`.
+
+Important rendering invariants:
+
+- exactly 10,000 discrete samples;
+- `y = i / 295`;
+- fixed logical 400×400 clipping semantics;
+- no outlier-based auto-fit;
+- uniform geometry;
+- natural `4π` / approximately 16-second loop;
+- stroke alpha approximately `116 / 255`.
+
+Current beta configuration includes:
+
+```json
+{
+  "aquariumCreatureBetaPointSamples": 10000,
+  "aquariumCreatureBetaScaleMultiplier": 1.28,
+  "aquariumCreatureBetaWidthMultiplier": 1.0,
+  "aquariumCreatureBetaHeightMultiplier": 1.0,
+  "aquariumCreatureBetaSpriteFill": 1.0,
+  "aquariumCreatureBetaPointSizeMultiplier": 1.0
+}
+```
+
+A beta creature also strongly increases the rate at which Aquarium words
+are generated.
+
+---
+
+# ENTROPY — final game phase
+
+`v0.5.x` introduced the final phase called **ENTROPY**.
+
+It has two automatic triggers:
+
+```text
+1. bucket reaches size 10
+2. any emotion reaches completed-buffer score 3
+   (the first beta creature for that emotion)
+```
+
+A debug button can also start/restart Entropy manually.
+
+## APETITE → ENTROPY transition
+
+The bottom HUD label transforms character-by-character:
+
+```text
+APETITE
+  ↓ scrambled characters
+ENTROPY
+```
+
+while its value transitions to:
+
+```text
+ENTROPY 1000
+```
+
+Once settled, Entropy decreases toward zero.
+
+Default:
+
+```json
+{
+  "entropyDecayPerSecond": 10
+}
+```
+
+At the default rate, `1000 → 0` takes approximately 100 seconds.
+
+---
+
+# Entropy glitch layer
+
+The final Entropy visual evolved through several experiments in
+`v0.5.x`. The current direction is based on the original `v0.5.0` live
+scene-sampling approach.
+
+Important behavior:
+
+- the Entropy layer sits above Ocean, Aquarium, Bucket and HUD;
+- glitch regions sample the **current lower-layer image**;
+- moving fish/bucket/HUD content therefore glitches live rather than
+  becoming frozen textures;
+- regions accumulate over time instead of every frame choosing an
+  entirely unrelated location;
+- region masks use varied sizes and fragmented shapes;
+- horizontal bands are present but are no longer the dominant form;
+- color-channel accents are restrained;
+- corruption becomes denser/faster as Entropy approaches zero.
+
+The visual continues running at maximum corruption while the final
+`c:\entity` popup is displayed.
+
+---
+
+# ENTROPY 0000 / player lock
+
+When Entropy reaches zero:
+
+```text
+player input ends
+```
+
+`BucketLayer.setInputEnabled(false)` disables:
+
+- swipe/pull;
+- double-tap discard;
+- new bucket interactions.
+
+If the player is physically dragging the ocean when zero is reached, the
+gesture is released and the water returns.
+
+---
+
+# c:\entity
+
+At `ENTROPY 0000`, a stable terminal appears in the center of the screen,
+above the glitch layer.
+
+Title:
+
+```text
+c:\entity
+```
+
+Message:
+
+```text
+Congratulations! You become a channel through wich now communicative capitalism circulates and proliferates.
+```
+
+Any tap/click/touch/key closes the terminal and starts the final
+Meltdown.
+
+---
+
+# Real game termination
+
+The input that dismisses `c:\entity` is the actual end of the playable
+game.
+
+At that moment the project destroys/stops:
+
+```text
+BucketLayer
+EntropyLayer
+HudLayer
+AquariumLayer
+OceanEngine
+```
+
+Their canvases and debug UI are hidden.
+
+**MeltdownLayer becomes the only continuing animation system.**
+
+---
+
+# Meltdown final
+
+The Meltdown renderer evolved throughout `v0.5.4 → v0.5.10` using the
+supplied Meltdown references plus ideas from `MamaMatrix`, `tinymatrix`
+and `play.core` examples.
+
+The current implementation is a fixed-coordinate **console matrix**.
+
+## Full viewport
+
+The final canvas uses:
+
+```css
+position: fixed;
+width: 100vw;
+height: 100dvh;
+z-index: 9999;
+```
+
+so the final animation covers the complete browser viewport instead of
+only the portrait game shell.
+
+Matrix cells are derived from the viewport:
+
+```text
+cellW = viewportWidth / cols
+cellH = viewportHeight / rows
+```
+
+Every character is drawn directly at its permanent `(x, y)` console
+cell.
+
+## Fixed coordinates
+
+Rows do not physically translate or fall.
+
+The final animation follows the `play.core` model:
+
+```text
+coordinate stays fixed
+time changes
+returned character changes
+```
+
+The illusion of flow/melting comes from how every cell samples the text
+stream and procedural fields.
+
+## Time field / cascade
+
+The `time_milliseconds` reference inspired the main deformation field:
+
+```text
+t = time × 0.0001
+o = sin(y × sin(t) × 0.2 + x × 0.04 + t) × 20
+```
+
+That field influences:
+
+- spaces between text chunks;
+- which text-stream index a cell reads;
+- negative-space waves;
+- secondary console glyphs.
+
+The strength is activated progressively from the top row toward the
+bottom, producing the initial cascade without moving row coordinates.
+
+## Text as material
+
+The final matrix is built from the three supplied messages:
+
+```text
+Permanent record of everything you do...
+```
+
+```text
+...messages become 'mere contributions to the circulation of images, opinions and information, to the billions of nuggets of information na affect trying to catch and hold attention, to push or sway opinion, taste and rends in one direction rather than anoter'
+```
+
+```text
+It doesn't care how many 'anti-capitalist' messages are circulating, only that the circulation of messages continues, incenssantly.
+```
+
+plus small pseudo-code fragments that increase console density.
+
+## Chroma Spiral field
+
+`v0.5.10` added a second field inspired by the `chromaspiral` demo.
+
+It uses:
+
+- normalized matrix coordinates;
+- iterative rotation;
+- time-dependent sine/cosine offsets;
+- density `#Wabc:+-. `;
+- color bands.
+
+Its purpose is not to replace the text. It gives the matrix larger,
+coherent animated forms so the final screen reads as an evolving shape
+rather than only a field of independently changing characters.
+
+Current conceptual combination:
+
+```text
+text/messages      = material
+time_milliseconds  = cascade / flow
+chromaspiral       = large-scale form
+```
+
+The Meltdown runs forever.
+
+---
+
+# Debug controls
+
+The debug panel currently includes runtime controls for:
+
+- bucket size;
+- bucket 1–3 fill-speed multiplier;
+- drain speed;
+- ATTENTION per cell;
+- APETITE multiplier;
+- base JOY/RAGE/FEAR/GRIEF chances;
+- special-cell drain duration;
+- nervous-buffer decay;
+- creature size;
+- active buffer `+1` / reset;
+- update / new ocean variation;
+- Entropy decay speed;
+- `INICIAR ENTROPIA`.
+
+Debug edits are runtime-only. `game-config.json` remains the authoritative
+startup configuration.
+
+---
+
+# Important configuration defaults
+
+```json
+{
+  "bucketLoadingRows": 1,
+  "bucketDrainSpeedMultiplier": 7,
+  "bucketLoadingSlotDurationMs": 1000,
+  "bucketFillSpeedMultiplier": 1.8,
+  "bucketFillSpeedAtRows4Multiplier": 2.2,
+  "bucketFillSpeedAtRows7Multiplier": 2.5,
+  "bucketFillSpeedAtRows10Multiplier": 3.0,
+
+  "attentionValuePerCell": 1,
+  "appetiteMultiplier": 100,
+
+  "gachaJoyChancePct": 5,
+  "gachaRageChancePct": 5,
+  "gachaFearChancePct": 5,
+  "gachaGriefChancePct": 5,
+  "gachaUnlockBucketRows": 3,
+
+  "gachaAdaptiveOwnBoostPctPerScore": 1.35,
+  "gachaAdaptiveOppositeBoostPctPerScore": 0.35,
+  "gachaAdaptiveSaturationScore": 12,
+  "gachaAdaptiveEmotionChanceCapPct": 30,
+  "gachaActiveBufferBoostPct": 5,
+
+  "specialCellDrainDurationMultiplier": 6,
+  "nervousBufferDecayPerSecond": 0.05,
+  "nervousBufferBaseTarget": 10,
+  "nervousBufferScoresPerTargetTier": 10,
+  "nervousBufferTargetStep": 10,
+
+  "aquariumCreaturePointSamples": 900,
+  "aquariumCreatureBetaPointSamples": 10000,
+  "aquariumCreatureSizeViewportRatio": 0.35,
+
+  "entropyDecayPerSecond": 10
+}
+```
+
+See the root `game-config.json` for the complete authoritative list.
+
+---
+
+# Version history since the previous consolidated README
+
+## v0.4.19
+
+- progressive bucket filling speed (`1.8 / 2.2 / 2.5 / 3.0`);
+- stronger long-term same-emotion adaptive gacha (`1.35`);
+- 10,000-point beta creature / fixed 400×400 clipping retained.
+
+## v0.5.0
+
+- introduced ENTROPY;
+- bucket-10 and emotion-score-3 triggers;
+- `APETITE → ENTROPY` scrambled transition;
+- `1000 → 0000` countdown;
+- initial full-screen glitch layer;
+- debug Entropy controls.
+
+## v0.5.1
+
+- experimental persistent grid/colony corruption.
+
+## v0.5.2
+
+- experimental random persistent patches with varied sizes.
+
+## v0.5.3
+
+- returned to the stronger `v0.5.0` glitch direction;
+- glitch masks sample the live game underneath;
+- persistent spatial masks without painted colored blocks.
+
+## v0.5.4
+
+- `ENTROPY 0000` input lock;
+- final `c:\entity` terminal;
+- first Meltdown implementation.
+
+## v0.5.5
+
+- more aggressive top-down Meltdown experiments;
+- row re-sampling and larger mutations.
+
+## v0.5.6
+
+- dismissing `c:\entity` became the true game termination point;
+- Ocean/Aquarium/Bucket/HUD/Entropy loops are destroyed;
+- only Meltdown remains alive.
+
+## v0.5.7
+
+- Meltdown redesigned as an endless textual wall;
+- MamaMatrix-style horizontal wrap / phase concepts explored.
+
+## v0.5.8
+
+- fixed-coordinate console matrix;
+- rows no longer physically move;
+- animated text gaps and coordinate-based glyph selection.
+
+## v0.5.9
+
+- Meltdown moved to the complete browser viewport;
+- every character rendered cell-by-cell;
+- `time_milliseconds` field integrated for the cascade/melting motion.
+
+## v0.5.10
+
+- Chroma Spiral field integrated;
+- larger coherent animated forms added to the final console matrix.
+
+## v0.6.0
+
+- documentation consolidated through the complete `v0.5.x` phase;
+- active visible nervous buffer now gives its emotion an additional
+  gacha chance boost;
+- default active-buffer bonus: **+5 percentage points**;
+- no new gameplay phase introduced: `v0.6.x` begins as the polish and
+  balancing series.
+
+
+## v0.6.1
+
+- surface/waterline divider increased from 1 to 3 visual glyph rows;
+- the two extra divider rows extend upward, preserving the exact swipe
+  threshold and underwater loading geometry;
+- `gachaActiveBufferBoostPct` reduced from `10` to `5` to slow the
+  short-term emotion snowball and make early Entropy less likely.

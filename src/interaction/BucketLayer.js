@@ -283,6 +283,9 @@ export class BucketLayer {
     this.gachaSystem =
       gachaSystem;
 
+    this.inputEnabled =
+      true;
+
     // loading | swipe
     this.mode = "loading";
 
@@ -447,6 +450,73 @@ export class BucketLayer {
     );
 
     this.setOceanOffset(0);
+  }
+
+  setInputEnabled(
+    enabled
+  ) {
+    const next =
+      Boolean(
+        enabled
+      );
+
+    if (
+      this.inputEnabled ===
+      next
+    ) {
+      return;
+    }
+
+    this.inputEnabled =
+      next;
+
+    if (
+      next
+    ) {
+      return;
+    }
+
+    if (
+      this.pointer.active
+    ) {
+      try {
+        this.canvas
+          .releasePointerCapture(
+            this.pointer.id
+          );
+      } catch {
+        // Pointer capture may already be released.
+      }
+    }
+
+    this.pointer.active =
+      false;
+
+    this.pointer.id =
+      null;
+
+    this.pointer.rawPullDistance =
+      0;
+
+    this.pointer.armed =
+      false;
+
+    this.resetSwipeTapState(
+      true
+    );
+
+    // If Entropy hits zero while the player is physically dragging the sea,
+    // release that drag visually. Existing automatic drain/return animation
+    // may finish, but no further player gesture can affect the game.
+    if (
+      this.mode ===
+      "loading"
+    ) {
+      this.startOffsetAnimation(
+        0,
+        RETURN_TO_OCEAN_DURATION_MS
+      );
+    }
   }
 
   resize() {
@@ -1663,6 +1733,13 @@ export class BucketLayer {
 
   handlePointerDown(event) {
     if (
+      !this.inputEnabled
+    ) {
+      event.preventDefault?.();
+      return;
+    }
+
+    if (
       this.mode === "swipe"
     ) {
       this.beginSwipeTap(
@@ -1702,6 +1779,13 @@ export class BucketLayer {
   }
 
   handlePointerMove(event) {
+    if (
+      !this.inputEnabled
+    ) {
+      event.preventDefault?.();
+      return;
+    }
+
     if (
       this.mode === "swipe" &&
       this.swipeTap.active
@@ -1765,6 +1849,13 @@ export class BucketLayer {
   }
 
   handlePointerUp(event) {
+    if (
+      !this.inputEnabled
+    ) {
+      event.preventDefault?.();
+      return;
+    }
+
     if (
       this.mode === "swipe" &&
       this.swipeTap.active
@@ -1843,6 +1934,13 @@ export class BucketLayer {
   }
 
   handlePointerCancel(event) {
+    if (
+      !this.inputEnabled
+    ) {
+      event.preventDefault?.();
+      return;
+    }
+
     if (
       this.mode === "swipe" &&
       this.swipeTap.active &&

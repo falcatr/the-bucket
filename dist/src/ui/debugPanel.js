@@ -60,7 +60,8 @@ export function setupDebugPanel({
   engine,
   onConfigChanged,
   onIncreaseActiveBuffer,
-  onResetActiveBuffer
+  onResetActiveBuffer,
+  onStartEntropy
 }) {
   const controlsRoot = document.getElementById("debugControls");
   const panel = document.getElementById("debugPanel");
@@ -205,4 +206,81 @@ export function setupDebugPanel({
   document.getElementById("newVariation").addEventListener("click", () => {
     engine.regenerate(true, false);
   });
+
+  const entropyDecayInput =
+    document.getElementById(
+      "entropyDecayPerSecond"
+    );
+
+  const entropyDecayOutput =
+    document.getElementById(
+      "entropyDecayPerSecondValue"
+    );
+
+  const updateEntropyDecayDisplay =
+    () => {
+      entropyDecayOutput.value =
+        `${formatValue(
+          config
+            .entropyDecayPerSecond
+        )} pts/s`;
+
+      entropyDecayOutput.textContent =
+        entropyDecayOutput.value;
+    };
+
+  entropyDecayInput.value =
+    String(
+      config
+        .entropyDecayPerSecond
+    );
+
+  updateEntropyDecayDisplay();
+
+  entropyDecayInput.addEventListener(
+    "input",
+    () => {
+      if (
+        entropyDecayInput.value ===
+        ""
+      ) {
+        return;
+      }
+
+      const nextValue =
+        Math.max(
+          0.1,
+          Math.min(
+            500,
+            Number(
+              entropyDecayInput.value
+            ) || 0.1
+          )
+        );
+
+      config.entropyDecayPerSecond =
+        nextValue;
+
+      entropyDecayInput.value =
+        String(
+          nextValue
+        );
+
+      updateEntropyDecayDisplay();
+
+      onConfigChanged?.(
+        "entropyDecayPerSecond",
+        nextValue
+      );
+    }
+  );
+
+  document.getElementById(
+    "startEntropy"
+  ).addEventListener(
+    "click",
+    () => {
+      onStartEntropy?.();
+    }
+  );
 }

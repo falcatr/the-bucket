@@ -41,6 +41,7 @@ const REQUIRED_NUMERIC_KEYS = [
   "gachaAdaptiveOppositeBoostPctPerScore",
   "gachaAdaptiveSaturationScore",
   "gachaAdaptiveEmotionChanceCapPct",
+  "gachaActiveBufferBoostPct",
   "aquariumBaseWordsPerMinute",
   "aquariumScoreExponent",
   "aquariumMaxWords",
@@ -57,7 +58,8 @@ const REQUIRED_NUMERIC_KEYS = [
   "aquariumCreatureHeadingChangeSecondsMin",
   "aquariumCreatureHeadingChangeSecondsMax",
   "aquariumCreatureMaxHeadingChangeRadians",
-  "aquariumCreatureAlpha"
+  "aquariumCreatureAlpha",
+  "entropyDecayPerSecond"
 ];
 
 export const CONTROL_DEFINITIONS =
@@ -351,6 +353,15 @@ function validateConfig(
       )
     );
 
+  config.entropyDecayPerSecond =
+    Math.max(
+      0,
+      Number(
+        config
+          .entropyDecayPerSecond
+      )
+    );
+
   config.nervousBufferBaseTarget =
     Math.max(
       1,
@@ -413,6 +424,18 @@ function validateConfig(
         Number(
           config
             .gachaAdaptiveEmotionChanceCapPct
+        )
+      )
+    );
+
+  config.gachaActiveBufferBoostPct =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Number(
+          config
+            .gachaActiveBufferBoostPct
         )
       )
     );
