@@ -35,8 +35,8 @@ const SPIRAL_COLORS =
 const MESSAGES =
   Object.freeze([
     "Permanent record of everything you do...",
-    "...messages become 'mere contributions to the circulation of images, opinions and information, to the billions of nuggets of information na affect trying to catch and hold attention, to push or sway opinion, taste and rends in one direction rather than anoter'",
-    "It doesn't care how many 'anti-capitalist' messages are circulating, only that the circulation of messages continues, incenssantly."
+    "...messages become 'mere contributions to the circulation of images, opinions and information, to the billions of nuggets of information and affect trying to catch and hold attention, to push or sway opinion, taste and trends in one direction rather than another.'",
+    "It doesn't care how many 'anti-capitalist' messages are circulating, only that the circulation of messages continues incessantly."
   ]);
 
 const CODE_FRAGMENTS =

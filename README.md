@@ -1,4 +1,4 @@
-# ASCII Ocean Mobile v0.6.1
+# ASCII Ocean Mobile v0.6.2
 
 Mobile-first procedural ASCII ocean game/prototype built with
 **Canvas 2D + JavaScript modules**.
@@ -720,11 +720,15 @@ c:\entity
 Message:
 
 ```text
-Congratulations! You become a channel through wich now communicative capitalism circulates and proliferates.
+Congratulations! You became a channel through which now communicative capitalism circulates and proliferates.
 ```
 
 Any tap/click/touch/key closes the terminal and starts the final
 Meltdown.
+
+Since `v0.6.2`, the popup height is content-driven: the decorative cursor row
+was removed, the old fixed minimum height was removed, and the panel now wraps
+closely around the message without leaving an empty line below it.
 
 ---
 
@@ -824,11 +828,11 @@ Permanent record of everything you do...
 ```
 
 ```text
-...messages become 'mere contributions to the circulation of images, opinions and information, to the billions of nuggets of information na affect trying to catch and hold attention, to push or sway opinion, taste and rends in one direction rather than anoter'
+...messages become 'mere contributions to the circulation of images, opinions and information, to the billions of nuggets of information and affect trying to catch and hold attention, to push or sway opinion, taste and trends in one direction rather than another.'
 ```
 
 ```text
-It doesn't care how many 'anti-capitalist' messages are circulating, only that the circulation of messages continues, incenssantly.
+It doesn't care how many 'anti-capitalist' messages are circulating, only that the circulation of messages continues incessantly.
 ```
 
 plus small pseudo-code fragments that increase console density.
@@ -1016,3 +1020,12 @@ See the root `game-config.json` for the complete authoritative list.
   threshold and underwater loading geometry;
 - `gachaActiveBufferBoostPct` reduced from `10` to `5` to slow the
   short-term emotion snowball and make early Entropy less likely.
+
+
+## v0.6.2
+
+- corrected the final `c:\entity` victory message;
+- removed the extra cursor/blank row from the final popup and made its height
+  follow the text content;
+- corrected clear English typos in the three Meltdown source messages without
+  changing their intended meaning.

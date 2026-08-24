@@ -402,9 +402,8 @@ button { -webkit-touch-callout: none; }
 
 .entity-terminal {
   position: relative;
-  width: min(88vw, 420px);
-  min-height: 164px;
-  padding: 27px 18px 18px;
+  width: min(88vw, 390px);
+  padding: 24px 16px 14px;
   color: #d9ffff;
   border: 2px solid #20f5e8;
   outline: 1px solid rgba(255, 243, 93, 0.46);
@@ -449,29 +448,6 @@ button { -webkit-touch-callout: none; }
   text-wrap: pretty;
 }
 
-.entity-terminal__cursor {
-  margin-top: 15px;
-  color: #fff35d;
-  font-size: 12px;
-  line-height: 1;
-  animation:
-    entity-cursor-blink
-    760ms
-    steps(1, end)
-    infinite;
-}
-
-@keyframes entity-cursor-blink {
-  0%,
-  44% {
-    opacity: 1;
-  }
-
-  45%,
-  100% {
-    opacity: 0;
-  }
-}
 
 .meltdown-canvas {
   position: fixed;
