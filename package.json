@@ -1,7 +1,7 @@
 {
   "name": "the-bucket",
   "private": true,
-  "version": "0.7.0-release-candidate",
+  "version": "0.7.1-release-candidate",
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",

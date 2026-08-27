@@ -1,4 +1,4 @@
-# The Bucket v0.7.0-release-candidate
+# The Bucket v0.7.1-release-candidate
 
 
 > **Release candidate for the first public web build.**
@@ -1150,3 +1150,80 @@ username/domain.
 - build now copies `public/` assets into `dist/`;
 - added `.github/workflows/deploy-pages.yml`;
 - prepared the static `dist/` output for the first GitHub Pages deployment.
+
+---
+
+# Desktop full-bleed experiment — v0.7.1-release-candidate
+
+The desktop layout now separates **world size** from **gameplay scale**.
+
+Default release values:
+
+```json
+{
+  "desktopPlayWidthPx": 540,
+  "desktopPlayHeightPx": 960
+}
+```
+
+On mobile (`viewport width <= desktopPlayWidthPx`) the rendering and swipe
+geometry remain unchanged.
+
+On a wider desktop viewport:
+
+```text
+mobile gameplay reference
+540 × 960
+        ↓
+determines cell size / bucket size / bucket Y / swipe resistance
+
+desktop browser viewport
+full width × full height
+        ↓
+determines how many ocean columns/rows are generated
+```
+
+The ocean does not scale its original 42 columns up to desktop width.
+Instead:
+
+```text
+cell width = 540 / 42
+desktop columns = ceil(browser width / cell width)
+```
+
+So a wider monitor gets more reef, algae, fish and water rather than larger
+characters.
+
+`AquariumLayer` already uses the full parent viewport, so words and completed
+emotion creatures now have the full desktop width available while retaining
+their previous creature scale because that scale still comes from the
+mobile-sized ocean cell.
+
+The bucket remains centered in the expanded world, but its dimensions are still
+calculated from the 42-column mobile reference.
+
+The vertical bucket position, resisted swipe distance and IDLE-SWIPE hold
+distance use the `desktopPlayHeightPx` reference on desktop. This prevents a
+very tall monitor from turning the swipe into an excessively long gesture.
+
+This is intentionally the first desktop-layout release candidate and the two
+reference values remain JSON-configurable so they can be tuned after testing.
+
+
+---
+
+# v0.7.1 release-candidate notes
+
+
+## v0.7.1-release-candidate
+
+- desktop ocean/background changed from a centered 540px strip to full viewport;
+- mobile cell/glyph scale remains based on a 540px / 42-column reference;
+- wide screens generate additional ocean columns instead of enlarging cells;
+- Aquarium words and creatures can use the complete desktop viewport;
+- bucket remains centered but keeps mobile scale;
+- bucket vertical placement and swipe resistance use a 960px desktop gameplay
+  reference;
+- added `desktopPlayWidthPx` and `desktopPlayHeightPx` to `game-config.json`;
+- mobile behavior remains unchanged;
+- GitHub Pages deployment workflow remains automatic on pushes to `main`.

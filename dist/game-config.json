@@ -56,5 +56,7 @@
   "bucketFillSpeedAtRows7Multiplier": 2.5,
   "bucketFillSpeedAtRows10Multiplier": 3.0,
   "entropyDecayPerSecond": 10,
-  "gachaActiveBufferBoostPct": 5
+  "gachaActiveBufferBoostPct": 5,
+  "desktopPlayWidthPx": 540,
+  "desktopPlayHeightPx": 960
 }

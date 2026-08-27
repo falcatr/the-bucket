@@ -49,6 +49,13 @@ export class OceanEngine {
     this.cols = TARGET_COLUMNS;
     this.rows = 0;
 
+    // Full-bleed desktop world vs. mobile-scaled gameplay reference.
+    this.playViewportWidth = 0;
+    this.playViewportHeight = 0;
+    this.playRows = 0;
+    this.gridOffsetX = 0;
+    this.desktopExtended = false;
+
     this.seed = randomSeed();
     this.rng = createRng(this.seed);
     this.random = randomHelpers(this.rng);
@@ -106,13 +113,90 @@ export class OceanEngine {
     this.viewportHeight = Math.max(1, rect.height);
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-    this.cellW = this.width / TARGET_COLUMNS;
-    this.cellH = this.cellW * CELL_HEIGHT_RATIO;
-    this.cols = TARGET_COLUMNS;
+    const configuredPlayWidth =
+      Math.max(
+        320,
+        Number(
+          this.config
+            .desktopPlayWidthPx
+        ) || 540
+      );
 
-    // `rows` remains the logical underwater/visible viewport size so all
-    // existing procedural generation and the bucket keep their proportions.
-    this.rows = Math.ceil(this.viewportHeight / this.cellH) + 1;
+    const configuredPlayHeight =
+      Math.max(
+        568,
+        Number(
+          this.config
+            .desktopPlayHeightPx
+        ) || 960
+      );
+
+    // Mobile keeps the old behavior exactly: 42 columns span the viewport.
+    //
+    // Desktop does NOT enlarge those 42 cells to fill the monitor. Instead,
+    // cell size is frozen to a mobile-width reference and we generate extra
+    // columns to the left/right. This is the "extend the ocean" model.
+    this.desktopExtended =
+      this.width >
+      configuredPlayWidth +
+        0.5;
+
+    this.playViewportWidth =
+      this.desktopExtended
+        ? configuredPlayWidth
+        : this.width;
+
+    this.playViewportHeight =
+      this.desktopExtended
+        ? Math.min(
+            this.viewportHeight,
+            configuredPlayHeight
+          )
+        : this.viewportHeight;
+
+    this.cellW =
+      this.playViewportWidth /
+      TARGET_COLUMNS;
+
+    this.cellH =
+      this.cellW *
+      CELL_HEIGHT_RATIO;
+
+    this.cols =
+      Math.max(
+        TARGET_COLUMNS,
+        Math.ceil(
+          this.width /
+          this.cellW
+        )
+      );
+
+    // Center the logical world so partial edge cells are distributed equally
+    // on both sides of a wide desktop viewport.
+    this.gridOffsetX =
+      (
+        this.width -
+        this.cols *
+          this.cellW
+      ) /
+      2;
+
+    // `rows` describes the complete visible world. `playRows` is the
+    // mobile-sized interaction reference used only by bucket positioning and
+    // swipe geometry.
+    this.rows =
+      Math.ceil(
+        this.viewportHeight /
+        this.cellH
+      ) +
+      1;
+
+    this.playRows =
+      Math.ceil(
+        this.playViewportHeight /
+        this.cellH
+      ) +
+      1;
 
     // The same canvas is extended upward. Using a whole number of cells
     // keeps the surface boundary perfectly aligned with the console grid.
@@ -1936,7 +2020,12 @@ export class OceanEngine {
   }
 
   drawCellGlyph(ctx, glyph, col, row, color, alpha, scale, mirror) {
-    const centerX = col * this.cellW + this.cellW * 0.5;
+    const centerX =
+      this.gridOffsetX +
+      col *
+        this.cellW +
+      this.cellW *
+        0.5;
     const centerY = row * this.cellH + this.cellH * 0.5;
     const japanese = isJapaneseGlyph(glyph);
     const fontSize = this.cellH * (japanese ? 0.83 : 0.79) * scale;

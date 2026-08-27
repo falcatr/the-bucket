@@ -54,7 +54,9 @@ const REQUIRED_NUMERIC_KEYS = [
   "aquariumCreatureHeadingChangeSecondsMax",
   "aquariumCreatureMaxHeadingChangeRadians",
   "aquariumCreatureAlpha",
-  "entropyDecayPerSecond"
+  "entropyDecayPerSecond",
+  "desktopPlayWidthPx",
+  "desktopPlayHeightPx"
 ];
 
 function validateConfig(
@@ -480,6 +482,33 @@ function validateConfig(
         Number(
           config
             .aquariumCreatureAlpha
+        )
+      )
+    );
+
+  // Desktop full-bleed world reference. These values do not resize the
+  // background world itself; they preserve the gameplay scale used by the
+  // bucket/swipe while extra desktop space becomes additional ocean columns.
+  config.desktopPlayWidthPx =
+    Math.max(
+      320,
+      Math.min(
+        720,
+        Number(
+          config
+            .desktopPlayWidthPx
+        )
+      )
+    );
+
+  config.desktopPlayHeightPx =
+    Math.max(
+      568,
+      Math.min(
+        1280,
+        Number(
+          config
+            .desktopPlayHeightPx
         )
       )
     );

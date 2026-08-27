@@ -21,14 +21,13 @@ button { -webkit-touch-callout: none; }
 
 .app-shell {
   position: relative;
-  width: min(100vw, 540px);
+  width: 100vw;
   height: 100dvh;
   min-height: 100svh;
-  margin-inline: auto;
+  margin: 0;
   overflow: hidden;
   isolation: isolate;
   background: #03158f;
-  box-shadow: 0 0 44px rgba(0, 0, 0, 0.34);
 }
 
 .ocean-canvas {
@@ -119,7 +118,15 @@ button { -webkit-touch-callout: none; }
 
 @media (min-width: 541px) {
   body {
-    background: radial-gradient(circle at center, #04146f 0%, #01052f 78%);
+    background: #03158f;
+  }
+}
+
+/* Landscape warning is a mobile/touch affordance. Desktop landscape is now
+   a supported full-bleed presentation. */
+@media (orientation: landscape) and (max-height: 600px) and (pointer: fine) {
+  .rotate-notice {
+    display: none;
   }
 }
 

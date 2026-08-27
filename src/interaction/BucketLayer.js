@@ -811,11 +811,28 @@ export class BucketLayer {
     );
   }
 
-  getSwipeHoldOffset() {
-    const viewportHeight =
+  getInteractionReferenceHeight() {
+    const canvasHeight =
       this.canvas
         .getBoundingClientRect()
         .height;
+
+    return Math.max(
+      1,
+      Math.min(
+        canvasHeight,
+        Number(
+          this.ocean
+            .playViewportHeight
+        ) ||
+          canvasHeight
+      )
+    );
+  }
+
+  getSwipeHoldOffset() {
+    const viewportHeight =
+      this.getInteractionReferenceHeight();
 
     return Math.min(
       viewportHeight *
@@ -2002,9 +2019,7 @@ export class BucketLayer {
     }
 
     const viewportHeight =
-      this.canvas
-        .getBoundingClientRect()
-        .height;
+      this.getInteractionReferenceHeight();
 
     const maxVisualDistance =
       Math.min(
@@ -2272,7 +2287,10 @@ export class BucketLayer {
       ) / 2;
 
     const centerRow =
-      this.ocean.rows *
+      (
+        this.ocean.playRows ||
+        this.ocean.rows
+      ) *
       BUCKET_CENTER_Y;
 
     const bounceOffset =
