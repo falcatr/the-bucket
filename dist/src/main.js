@@ -51,10 +51,6 @@ import {
 } from "./ui/AquariumLayer.js";
 
 import {
-  setupDebugPanel
-} from "./ui/debugPanel.js";
-
-import {
   setupFullscreen
 } from "./ui/fullscreen.js";
 
@@ -102,11 +98,6 @@ async function boot() {
   const meltdownCanvas =
     document.getElementById(
       "meltdownLayer"
-    );
-
-  const debugPanel =
-    document.getElementById(
-      "debugPanel"
     );
 
   const engine =
@@ -181,13 +172,6 @@ async function boot() {
         ]
       ) {
         layer.hidden =
-          true;
-      }
-
-      if (
-        debugPanel
-      ) {
-        debugPanel.hidden =
           true;
       }
     };
@@ -521,45 +505,7 @@ async function boot() {
       }
     );
 
-  setupDebugPanel({
-    config,
-    engine,
-    onIncreaseActiveBuffer:
-      () => {
-        nervous.increaseActiveBuffer(
-          1
-        );
-      },
-    onResetActiveBuffer:
-      () => {
-        nervous.resetActiveBuffer();
-      },
-    onStartEntropy:
-      () => {
-        startEntropy(
-          "debug",
-          {
-            restart: true
-          }
-        );
-      },
-    onConfigChanged:
-      (
-        key
-      ) => {
-        if (
-          key ===
-            "bucketLoadingRows" ||
-          key ===
-            "appetiteMultiplier"
-        ) {
-          progression
-            .refreshFromConfig(
-              attention.total
-            );
-        }
-      }
-  });
+
 
   document.addEventListener(
     "visibilitychange",
@@ -603,7 +549,7 @@ async function boot() {
 boot().catch(
   (error) => {
     console.error(
-      "Falha ao iniciar ASCII Ocean:",
+      "Failed to start The Bucket:",
       error
     );
 

@@ -7,7 +7,32 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>ASCII Ocean</title>
+    <meta name="application-name" content="The Bucket" />
+    <meta name="apple-mobile-web-app-title" content="The Bucket" />
+    <meta
+      name="description"
+      content="The Bucket is a procedural ASCII ocean game about attention, appetite, emotion and entropy."
+    />
+    <meta property="og:title" content="The Bucket" />
+    <meta
+      property="og:description"
+      content="A procedural ASCII ocean game about attention, appetite, emotion and entropy."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./icon-600.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="The Bucket" />
+    <meta
+      name="twitter:description"
+      content="A procedural ASCII ocean game about attention, appetite, emotion and entropy."
+    />
+    <meta name="twitter:image" content="./icon-600.png" />
+    <link rel="manifest" href="./site.webmanifest" />
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+    <title>The Bucket</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -66,45 +91,9 @@
         aria-label="Animação final eterna de meltdown tipográfico"
       ></canvas>
 
-      <div class="top-actions" aria-label="Controles da aplicação">
+      <div class="top-actions" aria-label="Application controls">
         <button id="fullscreenToggle" class="icon-button" type="button" aria-label="Entrar em tela cheia" title="Tela cheia">⛶</button>
-        <button id="debugToggle" class="icon-button" type="button" aria-controls="debugPanel" aria-expanded="true" aria-label="Fechar painel de debug" title="Configurações">×</button>
       </div>
-
-      <aside id="debugPanel" class="debug-panel" aria-label="Painel de configuração procedural">
-        <div class="debug-panel__header">
-          <span class="debug-panel__title">OCEAN DEBUG</span>
-          <span class="debug-panel__status">LIVE</span>
-        </div>
-        <div id="debugControls" class="debug-controls"></div>
-        <div class="debug-panel__footer">
-          <button class="debug-button" id="increaseNervousBuffer" type="button">BUFFER +1</button>
-          <button class="debug-button debug-button--secondary" id="resetNervousBuffer" type="button">ZERAR BUFFER</button>
-          <button class="debug-button debug-button--secondary" id="refreshView" type="button">ATUALIZAR</button>
-          <button class="debug-button" id="newVariation" type="button">NOVA VARIAÇÃO</button>
-        </div>
-        <div class="debug-panel__entropy">
-          <div class="debug-control">
-            <div class="debug-control__label-row">
-              <label for="entropyDecayPerSecond">Velocidade redução ENTROPY</label>
-              <output id="entropyDecayPerSecondValue" for="entropyDecayPerSecond"></output>
-            </div>
-            <input
-              class="debug-number"
-              id="entropyDecayPerSecond"
-              type="number"
-              min="0.1"
-              max="500"
-              step="0.1"
-              inputmode="decimal"
-              value="10"
-            />
-          </div>
-          <button class="debug-button debug-button--entropy" id="startEntropy" type="button">
-            INICIAR ENTROPIA
-          </button>
-        </div>
-      </aside>
 
       <section class="rotate-notice" aria-live="polite">
         <div class="rotate-notice__icon">↻</div>

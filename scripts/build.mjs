@@ -14,5 +14,6 @@ await cp(
   resolve(dist, "game-config.json")
 );
 await cp(resolve(projectRoot, "src"), resolve(dist, "src"), { recursive: true });
+await cp(resolve(projectRoot, "public"), dist, { recursive: true });
 
 console.log("Build estático criado em dist/");

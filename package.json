@@ -1,7 +1,7 @@
 {
-  "name": "ascii-ocean-mobile",
+  "name": "the-bucket",
   "private": true,
-  "version": "0.6.2",
+  "version": "0.7.0-release-candidate",
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",

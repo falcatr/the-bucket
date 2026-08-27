@@ -1,4 +1,11 @@
-# ASCII Ocean Mobile v0.6.2
+# The Bucket v0.7.0-release-candidate
+
+
+> **Release candidate for the first public web build.**
+>
+> Runtime configuration is now intentionally JSON-only through
+> `game-config.json`. The in-game debug/config menu has been removed from the
+> release UI; the only top action left is fullscreen.
 
 Mobile-first procedural ASCII ocean game/prototype built with
 **Canvas 2D + JavaScript modules**.
@@ -865,26 +872,20 @@ The Meltdown runs forever.
 
 ---
 
-# Debug controls
+# Release configuration
 
-The debug panel currently includes runtime controls for:
+The release build has **no in-game configuration/debug menu**.
 
-- bucket size;
-- bucket 1–3 fill-speed multiplier;
-- drain speed;
-- ATTENTION per cell;
-- APETITE multiplier;
-- base JOY/RAGE/FEAR/GRIEF chances;
-- special-cell drain duration;
-- nervous-buffer decay;
-- creature size;
-- active buffer `+1` / reset;
-- update / new ocean variation;
-- Entropy decay speed;
-- `INICIAR ENTROPIA`.
+All gameplay and tuning values are loaded from the root:
 
-Debug edits are runtime-only. `game-config.json` remains the authoritative
-startup configuration.
+```text
+game-config.json
+```
+
+Changing that JSON and rebuilding/redeploying is the supported configuration
+workflow for the release candidate.
+
+The only top-right UI action that remains is the fullscreen button.
 
 ---
 
@@ -1029,3 +1030,123 @@ See the root `game-config.json` for the complete authoritative list.
   follow the text content;
 - corrected clear English typos in the three Meltdown source messages without
   changing their intended meaning.
+
+---
+
+# Web release / GitHub Pages
+
+Repository name:
+
+```text
+the-bucket
+```
+
+This project is already structured as a static site. The command:
+
+```bash
+npm run build
+```
+
+creates:
+
+```text
+dist/
+├── index.html
+├── game-config.json
+├── favicon.ico
+├── favicon-16.png
+├── favicon-32.png
+├── favicon-48.png
+├── apple-touch-icon.png
+├── icon-192.png
+├── icon-512.png
+├── icon-600.png
+├── site.webmanifest
+└── src/
+```
+
+All runtime URLs use relative paths, so the project is compatible with a
+GitHub Pages project URL such as:
+
+```text
+https://<github-user>.github.io/the-bucket/
+```
+
+## First GitHub Pages setup
+
+This release candidate already includes:
+
+```text
+.github/workflows/deploy-pages.yml
+```
+
+After pushing the project to the `main` branch:
+
+1. Open the `the-bucket` repository on GitHub.
+2. Open **Settings**.
+3. In the left sidebar, open **Pages**.
+4. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+5. Push/merge the release candidate to `main`, or manually run the
+   **Deploy The Bucket to GitHub Pages** workflow from the Actions tab.
+6. Open the workflow run and confirm that both `build` and `deploy` completed.
+7. GitHub will expose the deployed Pages URL in the `github-pages`
+   environment/deployment summary.
+
+The workflow performs:
+
+```text
+checkout
+  ↓
+npm run build
+  ↓
+upload ./dist as Pages artifact
+  ↓
+deploy to github-pages
+```
+
+## Web metadata included
+
+The release HTML includes:
+
+- `<title>The Bucket</title>`;
+- description metadata;
+- Open Graph title/description/image metadata;
+- Twitter summary metadata;
+- `theme-color`;
+- Apple web-app metadata;
+- `site.webmanifest`;
+- favicon sizes `16`, `32`, `48`;
+- Apple touch icon `180`;
+- installable icons `192` and `512`;
+- a `600×600` project/share icon.
+
+The icon files live in:
+
+```text
+public/
+```
+
+and the build copies them to the root of `dist/`.
+
+Once the final public Pages URL is known, a later release can add an absolute
+`canonical`, `og:url`, and absolute `og:image` URL using the real GitHub
+username/domain.
+
+
+---
+
+# Release candidate history
+
+
+## v0.7.0-release-candidate
+
+- project/repository naming aligned to **The Bucket / `the-bucket`**;
+- removed the config/debug menu from the release UI;
+- removed the debug-panel runtime implementation;
+- `game-config.json` is now the only release configuration surface;
+- fullscreen remains as the only top action;
+- added favicon, Apple touch icon, installable web icons and a 600×600 icon;
+- added web manifest and browser/social metadata;
+- build now copies `public/` assets into `dist/`;
+- added `.github/workflows/deploy-pages.yml`;
+- prepared the static `dist/` output for the first GitHub Pages deployment.
