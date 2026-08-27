@@ -1,4 +1,4 @@
-# The Bucket v0.7.1-release-candidate
+# the bucket v0.7.2-release-candidate
 
 
 > **Release candidate for the first public web build.**
@@ -1227,3 +1227,61 @@ reference values remain JSON-configurable so they can be tuned after testing.
 - added `desktopPlayWidthPx` and `desktopPlayHeightPx` to `game-config.json`;
 - mobile behavior remains unchanged;
 - GitHub Pages deployment workflow remains automatic on pushes to `main`.
+
+---
+
+# Public metadata — v0.7.2-release-candidate
+
+Public-facing branding now uses:
+
+```text
+the bucket
+```
+
+The page/share description is intentionally minimal:
+
+```text
+>fill your bucket >drop it >grab what you can >repeat
+```
+
+The same description is applied to:
+
+- standard HTML `description`;
+- Open Graph `og:description`;
+- Twitter/X `twitter:description`;
+- `site.webmanifest`.
+
+The lowercase title is applied to:
+
+- browser `<title>`;
+- `application-name`;
+- Apple web-app title;
+- Open Graph title;
+- Twitter/X title;
+- manifest name and short name.
+
+Open Graph also defines:
+
+```text
+og:type      website
+og:site_name the bucket
+og:locale    en_US
+```
+
+A later publishing pass can add absolute canonical/share URLs after the public
+domain is considered final.
+
+
+---
+
+# v0.7.2 release-candidate notes
+
+
+## v0.7.2-release-candidate
+
+- public title normalized to lowercase `the bucket`;
+- public description changed to
+  `>fill your bucket >drop it >grab what you can >repeat`;
+- description synchronized across HTML, Open Graph, Twitter/X and manifest;
+- added `og:site_name` and `og:locale`;
+- desktop full-bleed experiment and GitHub Pages workflow preserved.

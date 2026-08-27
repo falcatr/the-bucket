@@ -1,7 +1,7 @@
 {
-  "name": "The Bucket",
-  "short_name": "The Bucket",
-  "description": "A procedural ASCII ocean game about attention, appetite, emotion and entropy.",
+  "name": "the bucket",
+  "short_name": "the bucket",
+  "description": ">fill your bucket >drop it >grab what you can >repeat",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
